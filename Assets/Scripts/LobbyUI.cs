@@ -262,6 +262,15 @@ public class LobbyUI : MonoBehaviour
         Text(hauptPanel.transform, "FARBMIMIK", new Vector2(0, 120), 42, Neon);
         Knopf(hauptPanel.transform, "Runde erstellen", new Vector2(0, 35), () =>
         {
+            // Ohne Spieler-Prefab wuerde die Runde leer starten - klarer Hinweis statt Chaos
+            if (Resources.Load<GameObject>("Spieler") == null)
+            {
+                ZeigeHilfe("SPIELER-PREFAB FEHLT!\n\nIn Unity einmal neu kompilieren lassen\n" +
+                           "(das Prefab wird automatisch erstellt) oder im Menue\n" +
+                           "Tools > FARBMIMIK > Netzwerk-Prefabs erstellen klicken.\n\n" +
+                           "Danach hier nochmal auf 'Runde erstellen' klicken.");
+                return;
+            }
             NetworkManager.singleton.StartHost();
             ZeigeHilfe(NetzwerkHilfe.HostAnleitung);   // zeigt sofort, was der Host machen muss
         });
@@ -424,14 +433,15 @@ public class LobbyUI : MonoBehaviour
         button.onClick.AddListener(aktion);
 
         // Text passt sich automatisch der Button-Groesse an (schrumpft bei
-        // langen Beschriftungen, statt ueber den Rand zu laufen)
+        // langen Beschriftungen, statt ueber den Rand zu laufen oder
+        // abgeschnitten zu werden)
         var text = Text(go.transform, beschriftung, Vector2.zero, 22, Color.white);
         text.rectTransform.sizeDelta = bild.rectTransform.sizeDelta - new Vector2(16, 6);
         text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Truncate;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
         text.resizeTextForBestFit = true;
-        text.resizeTextMaxSize = 22;
-        text.resizeTextMinSize = 10;
+        text.resizeTextMaxSize = 20;
+        text.resizeTextMinSize = 9;
         return button;
     }
 

@@ -15,8 +15,28 @@ public static class NetzPrefabBauer
 {
     const string Ordner = "Assets/Resources";
 
+    // Laeuft automatisch nach jedem Editor-Start/Kompilieren: fehlende
+    // Prefabs werden still erzeugt - niemand muss den Menuepunkt kennen.
+    [InitializeOnLoadMethod]
+    static void AutoErstellen()
+    {
+        EditorApplication.delayCall += () =>
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+                return;
+            if (Existiert("Spieler") && Existiert("KampfSpieler") && Existiert("KampfBotNetz"))
+                return;
+            Erstelle(false);
+        };
+    }
+
     [MenuItem("Tools/FARBMIMIK/Netzwerk-Prefabs erstellen")]
     public static void ErstelleAlle()
+    {
+        Erstelle(true);
+    }
+
+    static void Erstelle(bool mitDialog)
     {
         if (!AssetDatabase.IsValidFolder(Ordner))
             AssetDatabase.CreateFolder("Assets", "Resources");
@@ -27,9 +47,10 @@ public static class NetzPrefabBauer
         if (ErstelleKampfBot()) neu++;
 
         AssetDatabase.SaveAssets();
-        EditorUtility.DisplayDialog("Netzwerk-Prefabs",
-            neu + " Prefab(s) neu erstellt in " + Ordner + ".\n" +
-            "Bereits vorhandene wurden nicht angefasst.", "OK");
+        if (mitDialog)
+            EditorUtility.DisplayDialog("Netzwerk-Prefabs",
+                neu + " Prefab(s) neu erstellt in " + Ordner + ".\n" +
+                "Bereits vorhandene wurden nicht angefasst.", "OK");
     }
 
     static bool Existiert(string name)

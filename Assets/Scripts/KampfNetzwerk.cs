@@ -18,16 +18,36 @@ namespace NeonCatch
 
         public static void Hoste(int bots)
         {
+            if (!PruefePrefabs())
+                return;
             BotAnzahl = bots;
             HoleManager().StartHost();
         }
 
         public static void Trete(string ip, string code)
         {
+            if (!PruefePrefabs())
+                return;
             NetworkManager manager = HoleManager();
             LobbyManager.EingegebenerCode = (code ?? "").Trim().ToUpper();
             manager.networkAddress = string.IsNullOrWhiteSpace(ip) ? "localhost" : ip.Trim();
             manager.StartClient();
+        }
+
+        // Ohne die Netzwerk-Prefabs wuerde Online ins Leere starten (Menue weg,
+        // kein Spieler). Dann lieber gar nicht starten und es klar sagen.
+        static bool PruefePrefabs()
+        {
+            if (Resources.Load<GameObject>("KampfSpieler") != null &&
+                Resources.Load<GameObject>("KampfBotNetz") != null)
+                return true;
+
+            Debug.LogError("KampfOnline: Netzwerk-Prefabs fehlen (KampfSpieler/KampfBotNetz in Resources).");
+            if (KampfModus.Instanz != null)
+                KampfModus.Instanz.ZeigeMeldung(
+                    "Netzwerk-Prefabs fehlen! In Unity einmal neu kompilieren lassen " +
+                    "(sie werden automatisch erstellt) oder Tools > FARBMIMIK > Netzwerk-Prefabs erstellen.");
+            return false;
         }
 
         public static void Verlasse()

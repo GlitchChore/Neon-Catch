@@ -255,10 +255,23 @@ namespace NeonCatch
             Cursor.visible = true;
         }
 
+        /// <summary>Meldung im Startmenue anzeigen (z.B. Fehlerhinweise).</summary>
+        public void ZeigeMeldung(string text)
+        {
+            endText = text;
+        }
+
         void Update()
         {
-            // Waehrend einer Online-Runde uebernimmt KampfNetzwerk komplett
-            if (NetworkClient.active) return;
+            // Waehrend einer Online-Runde uebernimmt KampfNetzwerk komplett -
+            // aber ESC funktioniert IMMER als Notausgang zurueck ins Menue
+            if (NetworkClient.active)
+            {
+                var tastatur = Keyboard.current;
+                if (tastatur != null && tastatur.escapeKey.wasPressedThisFrame)
+                    KampfOnline.Verlasse();
+                return;
+            }
 
             MerkeStartPosition();
 
@@ -392,10 +405,27 @@ namespace NeonCatch
 
         void OnGUI()
         {
-            if (NetworkClient.active) return;   // Online-HUD zeichnet KampfNetzwerk
+            // Online-HUD zeichnet KampfNetzwerk - aber solange KEIN eigener
+            // Netzwerk-Spieler existiert (z.B. Verbindung klappt nicht),
+            // gibt es hier einen sichtbaren Abbrechen-Knopf als Notausgang
+            if (NetworkClient.active)
+            {
+                if (NetworkClient.localPlayer == null)
+                {
+                    if (knopfStil == null)
+                        knopfStil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, wordWrap = true };
+                    knopfStil.fontSize = Mathf.RoundToInt(Screen.height * 0.025f);
+                    GUI.Box(new Rect(Screen.width * 0.5f - Screen.width * 0.16f, Screen.height * 0.3f,
+                                     Screen.width * 0.32f, Screen.height * 0.08f), "Verbinde / warte auf Spieler...");
+                    if (GUI.Button(new Rect(Screen.width * 0.5f - Screen.width * 0.11f, Screen.height * 0.42f,
+                                            Screen.width * 0.22f, Screen.height * 0.07f), "ABBRECHEN (ESC)", knopfStil))
+                        KampfOnline.Verlasse();
+                }
+                return;
+            }
 
             if (knopfStil == null)
-                knopfStil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold };
+                knopfStil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, wordWrap = true };
 
             float sh = Screen.height, sw = Screen.width;
 
@@ -446,12 +476,12 @@ namespace NeonCatch
                 }
 
                 // START-Knopf (verschwindet, sobald der Kampf läuft)
-                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.70f, sw * 0.26f, sh * 0.08f),
                         "START (Solo mit Bots)", knopfStil))
                     StarteKampf();
 
-                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.79f, sw * 0.26f, sh * 0.055f),
                         "ONLINE HOSTEN (Freunde + Bots)", knopfStil))
                     KampfOnline.Hoste(botAnzahl);
