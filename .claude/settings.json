@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip -l \"Assets/3D Modelle/Burg.zip\")",
+      "Bash(cat ProjectSettings/ProjectVersion.txt)",
+      "Bash(ls \"Assets/_Recovery\")",
+      "Bash(python3 -c ' *)",
+      "Bash(ls -la gitignort)",
+      "Bash(ls .gitignore)",
+      "Bash(ls -la \"Assets/Editor/BurgBuilder.cs\")",
+      "Bash(ls \"Assets/3D Objekte\")"
+    ]
+  }
+}
