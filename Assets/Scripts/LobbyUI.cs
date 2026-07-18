@@ -82,6 +82,7 @@ public class LobbyUI : MonoBehaviour
     Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
     Text hilfeInhaltText;
+    RawImage hintergrundBild;
     InputField ipFeld, codeFeld;
     Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText;
     GameObject startButton, nochmalButton, kopierButton;
@@ -117,6 +118,10 @@ public class LobbyUI : MonoBehaviour
         SpielPhase phase = GamePhaseManager.Instance != null
             ? GamePhaseManager.Instance.phase
             : SpielPhase.Lobby;
+
+        // Hintergrundbild ueberall AUSSER im laufenden Spiel (Malen/Suchen)
+        if (hintergrundBild != null)
+            hintergrundBild.enabled = !(verbunden && (phase == SpielPhase.Malen || phase == SpielPhase.Suchen));
 
         hauptPanel.SetActive(!verbunden && !beitretenPanel.activeSelf && !hilfePanel.activeSelf);
         if (verbunden && beitretenPanel.activeSelf)
@@ -228,6 +233,22 @@ public class LobbyUI : MonoBehaviour
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1280, 720);
         canvasGO.AddComponent<GraphicRaycaster>();
+
+        // Menue-Hintergrundbild (Assets/Resources/MenueHintergrund) - wird als
+        // erstes Kind erzeugt und liegt damit HINTER allen Panels. Sichtbar in
+        // allen Menues, aber nicht waehrend Malen/Suchen (siehe Update()).
+        var hintergrundTex = Resources.Load<Texture2D>("MenueHintergrund");
+        if (hintergrundTex != null)
+        {
+            var hgGO = new GameObject("MenueHintergrund");
+            hgGO.transform.SetParent(canvas.transform, false);
+            hintergrundBild = hgGO.AddComponent<RawImage>();
+            hintergrundBild.texture = hintergrundTex;
+            // Bild fuellt den Bildschirm ohne Verzerrung (schneidet ggf. Raender ab)
+            var fitter = hgGO.AddComponent<AspectRatioFitter>();
+            fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            fitter.aspectRatio = (float)hintergrundTex.width / hintergrundTex.height;
+        }
 
         if (FindAnyObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
         {

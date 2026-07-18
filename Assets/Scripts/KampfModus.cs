@@ -57,6 +57,8 @@ namespace NeonCatch
         bool zeigeHilfe;
         string hilfeInhalt = "";
         bool hilfeZurueckZuBeitritt;
+        Texture2D menueHintergrund;
+        bool hintergrundGesucht;
         string onlineIp = "";
         string onlineCode = "";
 
@@ -399,11 +401,28 @@ namespace NeonCatch
 
             if (!laeuft)
             {
-                // Schwarzer Hintergrund fürs Startmenü – verschwindet komplett
-                // zusammen mit allen Knöpfen, sobald der Kampf läuft
+                // Hintergrund fürs Startmenü: das Bild aus Assets/Resources/
+                // MenueHintergrund (leicht abgedunkelt, damit Text lesbar
+                // bleibt), Fallback schwarz. Verschwindet komplett zusammen
+                // mit allen Knöpfen, sobald der Kampf läuft.
+                if (!hintergrundGesucht)
+                {
+                    hintergrundGesucht = true;
+                    menueHintergrund = Resources.Load<Texture2D>("MenueHintergrund");
+                }
                 Color altBg = GUI.color;
-                GUI.color = Color.black;
-                GUI.DrawTexture(new Rect(0f, 0f, sw, sh), Texture2D.whiteTexture);
+                if (menueHintergrund != null)
+                {
+                    GUI.color = Color.white;
+                    GUI.DrawTexture(new Rect(0f, 0f, sw, sh), menueHintergrund, ScaleMode.ScaleAndCrop);
+                    GUI.color = new Color(0f, 0f, 0f, 0.45f);   // Abdunkeln für Lesbarkeit
+                    GUI.DrawTexture(new Rect(0f, 0f, sw, sh), Texture2D.whiteTexture);
+                }
+                else
+                {
+                    GUI.color = Color.black;
+                    GUI.DrawTexture(new Rect(0f, 0f, sw, sh), Texture2D.whiteTexture);
+                }
                 GUI.color = altBg;
 
                 // Kein RESET-Knopf mehr – die R-Taste übernimmt das (siehe Update()).
