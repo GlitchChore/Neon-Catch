@@ -770,14 +770,14 @@ namespace NeonCatch
                 // Code + IP mit einem Klick kopieren und an Freunde schicken
                 var kopierKnopf = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold };
                 kopierKnopf.fontSize = Mathf.RoundToInt(sh * 0.02f);
-                string kopierText = kopiertAnzeige > 0f ? "Kopiert! Jetzt verschicken." : "CODE + IP KOPIEREN";
+                string kopierText = kopiertAnzeige > 0f ? "Kopiert! Jetzt verschicken." : "CODE KOPIEREN";
                 if (GUI.Button(new Rect(karte.x + karte.width * 0.2f, y, karte.width * 0.6f, sh * 0.05f),
                         kopierText, kopierKnopf))
                 {
                     GUIUtility.systemCopyBuffer =
-                        "Spiel mit bei NEON BLASTER! Beitritts-Code: " + LobbyManager.RoomCode +
-                        " | Meine WLAN-IP: " + LokaleIP() +
-                        " | Starte das Spiel, klicke RUNDE BEITRETEN und gib IP + Code ein.";
+                        "Beitritts-Code: " + LobbyManager.RoomCode +
+                        " - Spiel NEON CATCH starten, RUNDE BEITRETEN klicken, " +
+                        "mich in der Freundesliste auswählen und den Code eintippen!";
                     kopiertAnzeige = 2f;
                 }
                 y += sh * 0.06f;
@@ -785,9 +785,10 @@ namespace NeonCatch
                 // Kurzanleitung inkl. Fritzbox-Hinweis
                 lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.018f);
                 GUI.Label(new Rect(karte.x + karte.width * 0.05f, y, karte.width * 0.9f, sh * 0.08f),
-                          "Schick deinen Freunden Code + IP (Knopf oben). Im gleichen WLAN reicht das schon. " +
+                          "Schick deinen Freunden den Code (Knopf oben). Beim ERSTEN Mal auch deine IP: " +
+                          LokaleIP() + " - danach speichern dich Freunde einfach mit Namen. " +
                           "Übers Internet: vorher in der Fritzbox Port 7777 (UDP) freigeben - " +
-                          "genaue Anleitung unter HILFE im Startmenü.", lobbyTextStil);
+                          "Anleitung unter HILFE im Startmenü.", lobbyTextStil);
                 y += sh * 0.085f;
             }
 

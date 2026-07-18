@@ -66,6 +66,7 @@ namespace NeonCatch
         GUIStyle kartenStil, kartenTitelStil;
         string onlineIp = "";
         string onlineCode = "";
+        string onlineFreundName = "";
 
         // Spawn-Position bei der Burg (wie am Anfang) – für den Reset-Knopf
         Vector3 spielerStartPos;
@@ -352,21 +353,55 @@ namespace NeonCatch
             float feldBreite = sw * 0.3f;
             float x = sw * 0.5f - feldBreite * 0.5f;
 
-            GUI.Label(new Rect(x, sh * 0.22f, feldBreite, sh * 0.05f), "IP des Hosts:", textStil);
-            onlineIp = GUI.TextField(new Rect(x, sh * 0.28f, feldBreite, sh * 0.05f), onlineIp);
+            // Gespeicherte Freunde: Klick auf den Namen fuellt die IP aus
+            var freunde = FreundeListe.Alle();
+            if (freunde.Count > 0)
+            {
+                textStil.alignment = TextAnchor.MiddleCenter;
+                textStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+                GUI.Label(new Rect(x, sh * 0.12f, feldBreite, sh * 0.04f),
+                          "Mit wem spielen? (Klick = IP wird eingefügt)", textStil);
+                textStil.alignment = TextAnchor.MiddleLeft;
 
-            GUI.Label(new Rect(x, sh * 0.36f, feldBreite, sh * 0.05f), "Room-Code:", textStil);
-            onlineCode = GUI.TextField(new Rect(x, sh * 0.42f, feldBreite, sh * 0.05f), onlineCode);
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.02f);
+                int anzahl = Mathf.Min(freunde.Count, 4);
+                float knopfBreite = sw * 0.075f;
+                for (int i = 0; i < anzahl; i++)
+                {
+                    float kx = sw * 0.5f + (i - (anzahl - 1) * 0.5f) * (knopfBreite + sw * 0.008f) - knopfBreite * 0.5f;
+                    if (GUI.Button(new Rect(kx, sh * 0.165f, knopfBreite, sh * 0.045f), freunde[i][0], knopfStil))
+                    {
+                        onlineIp = freunde[i][1];
+                        onlineFreundName = "";
+                    }
+                }
+            }
+
+            textStil.fontSize = Mathf.RoundToInt(sh * 0.03f);
+            GUI.Label(new Rect(x, sh * 0.23f, feldBreite, sh * 0.05f), "IP des Hosts:", textStil);
+            onlineIp = GUI.TextField(new Rect(x, sh * 0.285f, feldBreite, sh * 0.05f), onlineIp);
+
+            GUI.Label(new Rect(x, sh * 0.35f, feldBreite, sh * 0.05f), "Beitritts-Code:", textStil);
+            onlineCode = GUI.TextField(new Rect(x, sh * 0.405f, feldBreite, sh * 0.05f), onlineCode);
+
+            textStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+            GUI.Label(new Rect(x, sh * 0.47f, feldBreite, sh * 0.04f),
+                      "Zum Merken - Name des Freundes:", textStil);
+            onlineFreundName = GUI.TextField(new Rect(x, sh * 0.515f, feldBreite, sh * 0.045f), onlineFreundName);
 
             knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.54f, sw * 0.22f, sh * 0.08f),
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.585f, sw * 0.22f, sh * 0.07f),
                     "VERBINDEN", knopfStil))
             {
+                // Freund merken: beim naechsten Mal reicht ein Klick auf den Namen
+                if (onlineFreundName.Trim() != "")
+                    FreundeListe.Speichere(onlineFreundName, onlineIp);
+
                 zeigeOnlineBeitritt = false;
                 KampfOnline.Trete(onlineIp, onlineCode);
             }
             knopfStil.fontSize = Mathf.RoundToInt(sh * 0.028f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.72f, sw * 0.22f, sh * 0.05f),
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.755f, sw * 0.22f, sh * 0.05f),
                     "HILFE", knopfStil))
             {
                 hilfeInhalt = NetzwerkHilfe.BeitretenAnleitung;
@@ -375,8 +410,8 @@ namespace NeonCatch
                 zeigeHilfe = true;
             }
 
-            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.64f, sw * 0.22f, sh * 0.06f),
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.675f, sw * 0.22f, sh * 0.06f),
                     "ZURÜCK", knopfStil))
                 zeigeOnlineBeitritt = false;
         }

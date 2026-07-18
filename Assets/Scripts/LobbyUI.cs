@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -28,6 +29,50 @@ public static class SpielerProfil
             if (n.Length > 14) n = n.Substring(0, 14);
             PlayerPrefs.SetString(Schluessel, n);
         }
+    }
+}
+
+/// <summary>
+/// Gespeicherte Freunde (Name + IP) - die IP eines Freundes bleibt meist
+/// gleich, also einmal speichern und danach nur noch anklicken.
+/// Format in PlayerPrefs: "Name|IP;Name|IP" (maximal 8 Freunde).
+/// </summary>
+public static class FreundeListe
+{
+    const string Schluessel = "NeonCatch_Freunde";
+
+    /// <summary>Alle gespeicherten Freunde, neueste zuerst. [0]=Name, [1]=IP.</summary>
+    public static List<string[]> Alle()
+    {
+        var ergebnis = new List<string[]>();
+        string roh = PlayerPrefs.GetString(Schluessel, "");
+        foreach (string eintrag in roh.Split(';'))
+        {
+            var teile = eintrag.Split('|');
+            if (teile.Length == 2 && teile[0].Trim() != "" && teile[1].Trim() != "")
+                ergebnis.Add(new[] { teile[0].Trim(), teile[1].Trim() });
+        }
+        return ergebnis;
+    }
+
+    public static void Speichere(string name, string ip)
+    {
+        name = (name ?? "").Trim().Replace("|", "").Replace(";", "");
+        ip = (ip ?? "").Trim().Replace("|", "").Replace(";", "");
+        if (name == "" || ip == "")
+            return;
+        if (name.Length > 14) name = name.Substring(0, 14);
+
+        var alle = Alle();
+        alle.RemoveAll(f => f[0].ToLower() == name.ToLower());
+        alle.Insert(0, new[] { name, ip });
+        while (alle.Count > 8)
+            alle.RemoveAt(alle.Count - 1);
+
+        var teile = new List<string>();
+        foreach (var f in alle)
+            teile.Add(f[0] + "|" + f[1]);
+        PlayerPrefs.SetString(Schluessel, string.Join(";", teile));
     }
 }
 
@@ -105,7 +150,9 @@ public class LobbyUI : MonoBehaviour
 {
     Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
-    Text hilfeInhaltText, beitretenStatusText;
+    Text hilfeInhaltText, beitretenStatusText, ipHinweisText;
+    InputField freundNameFeld;
+    GameObject freundeReihe;
     RawImage hintergrundBild;
     Image weisserSchleier;
     bool verbindungLief, warVollVerbunden;
@@ -203,17 +250,18 @@ public class LobbyUI : MonoBehaviour
 
         if (NetworkServer.active)
         {
-            lobbyCodeText.text = "ROOM-CODE: " + LobbyManager.RoomCode +
-                                 "\nWLAN-IP (gleiches Netz): " + LokaleIP() +
-                                 "\nInternet-IP: " + oeffentlicheIP;
+            lobbyCodeText.text = "BEITRITTS-CODE: " + LobbyManager.RoomCode;
+            ipHinweisText.text = "Beim ERSTEN Mal auch deine IP mitschicken (danach haben Freunde sie gespeichert):\n" +
+                                 "WLAN: " + LokaleIP() + "   |   Internet: " + oeffentlicheIP;
             kopierButton.SetActive(true);
             var knopfText = kopierButton.GetComponentInChildren<Text>();
             if (knopfText != null)
-                knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "In Zwischenablage kopieren";
+                knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "CODE KOPIEREN";
         }
         else
         {
             lobbyCodeText.text = "Verbunden - warte auf den Host...";
+            ipHinweisText.text = "";
             kopierButton.SetActive(false);
         }
 
@@ -355,6 +403,7 @@ public class LobbyUI : MonoBehaviour
             hauptPanel.SetActive(false);
             beitretenPanel.SetActive(true);
             beitretenStatusText.text = "";
+            BaueFreundeKnoepfe();
             ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung);   // zeigt sofort, was der Beitretende machen muss
         });
         Knopf(hauptPanel.transform, "Anderer Modus: NEON BLASTER", new Vector2(0, -110), () =>
@@ -369,26 +418,45 @@ public class LobbyUI : MonoBehaviour
         });
 
         // ---------- Beitreten ----------
-        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 470);
-        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 195), 30, Neon);
-        beitretenStatusText = Text(beitretenPanel.transform, "", new Vector2(0, 145), 16, new Color(1f, 0.35f, 0.3f));
+        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 580);
+        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 250), 30, Neon);
+        beitretenStatusText = Text(beitretenPanel.transform, "", new Vector2(0, 210), 16, new Color(1f, 0.35f, 0.3f));
         beitretenStatusText.rectTransform.sizeDelta = new Vector2(400, 45);
-        Text(beitretenPanel.transform, "IP des Hosts:", new Vector2(0, 100), 18, Color.white);
-        ipFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, 65), "z.B. 192.168.1.20");
-        Text(beitretenPanel.transform, "Room-Code:", new Vector2(0, 25), 18, Color.white);
-        codeFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, -10), "z.B. X7K9");
-        Knopf(beitretenPanel.transform, "Beitreten", new Vector2(0, -70), () =>
+
+        // Gespeicherte Freunde: anklicken fuellt die IP automatisch aus
+        Text(beitretenPanel.transform, "Mit wem spielen? (Klick = IP wird eingefügt)", new Vector2(0, 172), 15, Color.white);
+        freundeReihe = new GameObject("FreundeReihe");
+        freundeReihe.transform.SetParent(beitretenPanel.transform, false);
+        freundeReihe.AddComponent<RectTransform>().anchoredPosition = new Vector2(0, 135);
+
+        Text(beitretenPanel.transform, "IP des Hosts:", new Vector2(0, 95), 18, Color.white);
+        ipFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, 62), "z.B. 192.168.1.20");
+        Text(beitretenPanel.transform, "Beitritts-Code:", new Vector2(0, 22), 18, Color.white);
+        codeFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, -12), "z.B. X7K9");
+
+        Text(beitretenPanel.transform, "Zum Merken - Name des Freundes:", new Vector2(0, -52), 15, Color.white);
+        freundNameFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, -85), "z.B. Daniel");
+
+        Knopf(beitretenPanel.transform, "Beitreten", new Vector2(0, -140), () =>
         {
             string ip = ipFeld.text.Trim();
             if (ip == "") ip = "localhost";
+
+            // Freund merken: beim naechsten Mal reicht ein Klick auf den Namen
+            if (freundNameFeld.text.Trim() != "")
+            {
+                FreundeListe.Speichere(freundNameFeld.text, ip);
+                BaueFreundeKnoepfe();
+            }
+
             LobbyManager.EingegebenerCode = codeFeld.text.Trim().ToUpper();
             NetworkManager.singleton.networkAddress = ip;
             NetworkManager.singleton.StartClient();
         });
         var beitretenHilfe = Knopf(beitretenPanel.transform, "Hilfe: Was muss ich machen?",
-            new Vector2(0, -130), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
+            new Vector2(0, -196), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
         beitretenHilfe.GetComponentInChildren<Text>().color = new Color(1f, 0.7f, 0.2f);
-        Knopf(beitretenPanel.transform, "Zurück", new Vector2(0, -190), () =>
+        Knopf(beitretenPanel.transform, "Zurück", new Vector2(0, -250), () =>
         {
             beitretenPanel.SetActive(false);
             beitretenStatusText.text = "";
@@ -398,17 +466,19 @@ public class LobbyUI : MonoBehaviour
 
         // ---------- Lobby ----------
         lobbyPanel = Panel(canvas.transform, "LobbyPanel", 520, 600);
-        lobbyCodeText = Text(lobbyPanel.transform, "", new Vector2(0, 235), 24, Neon);
-        lobbyCodeText.rectTransform.sizeDelta = new Vector2(480, 110);
+        lobbyCodeText = Text(lobbyPanel.transform, "", new Vector2(0, 250), 28, Neon);
+        lobbyCodeText.rectTransform.sizeDelta = new Vector2(480, 45);
 
-        kopierButton = Knopf(lobbyPanel.transform, "In Zwischenablage kopieren", new Vector2(0, 140), () =>
+        kopierButton = Knopf(lobbyPanel.transform, "CODE KOPIEREN", new Vector2(0, 195), () =>
         {
             GUIUtility.systemCopyBuffer =
-                "Spiel mit! Room-Code: " + LobbyManager.RoomCode +
-                " | Internet-IP: " + oeffentlicheIP +
-                " | WLAN-IP: " + LokaleIP();
+                "Beitritts-Code: " + LobbyManager.RoomCode +
+                " - Spiel FARBMIMIK starten, 'Runde beitreten' klicken und den Code eingeben!";
             kopiertAnzeige = 2f;
         }).gameObject;
+
+        ipHinweisText = Text(lobbyPanel.transform, "", new Vector2(0, 140), 14, new Color(0.85f, 0.85f, 0.85f));
+        ipHinweisText.rectTransform.sizeDelta = new Vector2(490, 45);
 
         spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 30), 20, Color.white);
         spielerListeText.alignment = TextAnchor.UpperCenter;
@@ -473,6 +543,32 @@ public class LobbyUI : MonoBehaviour
     {
         hilfeInhaltText.text = inhalt;
         hilfePanel.SetActive(true);
+    }
+
+    // Baut die Reihe der gespeicherten Freunde neu auf (max. 4 sichtbar).
+    // Klick auf einen Namen fuellt die IP automatisch aus.
+    void BaueFreundeKnoepfe()
+    {
+        foreach (Transform kind in freundeReihe.transform)
+            Destroy(kind.gameObject);
+
+        var freunde = FreundeListe.Alle();
+        int anzahl = Mathf.Min(freunde.Count, 4);
+        for (int i = 0; i < anzahl; i++)
+        {
+            string name = freunde[i][0];
+            string ip = freunde[i][1];
+            float x = (i - (anzahl - 1) * 0.5f) * 96f;
+            var knopf = Knopf(freundeReihe.transform, name, new Vector2(x, 0), () =>
+            {
+                ipFeld.text = ip;
+                if (freundNameFeld != null) freundNameFeld.text = "";
+            });
+            knopf.GetComponent<Image>().rectTransform.sizeDelta = new Vector2(90, 36);
+            var text = knopf.GetComponentInChildren<Text>();
+            text.rectTransform.sizeDelta = new Vector2(82, 32);
+            text.color = Neon;
+        }
     }
 
     void TrenneVerbindung()
