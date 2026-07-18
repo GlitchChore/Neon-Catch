@@ -1,3 +1,4 @@
+using Mirror;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections;
@@ -24,6 +25,10 @@ namespace NeonCatch
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoStart()
         {
+            // In der FARBMIMIK-Szene (erkennbar am LobbyManager) NICHT starten -
+            // das schwarze Startmenue wuerde dort das komplette Spiel verdecken
+            if (Object.FindAnyObjectByType<LobbyManager>() != null) return;
+
             var go = new GameObject("Kampf_Modus");
             go.AddComponent<KampfModus>();
         }
@@ -48,6 +53,9 @@ namespace NeonCatch
         PistolenSchuetze waffe;
         GUIStyle knopfStil, textStil, herzStil, steuerungStil;
         bool zeigeSteuerung;
+        bool zeigeOnlineBeitritt;
+        string onlineIp = "";
+        string onlineCode = "";
 
         // Spawn-Position bei der Burg (wie am Anfang) – für den Reset-Knopf
         Vector3 spielerStartPos;
@@ -244,6 +252,9 @@ namespace NeonCatch
 
         void Update()
         {
+            // Waehrend einer Online-Runde uebernimmt KampfNetzwerk komplett
+            if (NetworkClient.active) return;
+
             MerkeStartPosition();
 
             if (trefferBlitz > 0f) trefferBlitz -= Time.deltaTime * 2.5f;
@@ -290,6 +301,36 @@ namespace NeonCatch
             "R — Reset, jederzeit\n" +
             "ESC — Aufgeben";
 
+        // Online beitreten: IP + Room-Code eintippen (IMGUI, passend zum Startmenü)
+        void ZeichneOnlineBeitritt(float sw, float sh)
+        {
+            if (textStil == null)
+                textStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+            textStil.alignment = TextAnchor.MiddleLeft;
+            textStil.fontSize = Mathf.RoundToInt(sh * 0.03f);
+            textStil.normal.textColor = Color.white;
+
+            float feldBreite = sw * 0.3f;
+            float x = sw * 0.5f - feldBreite * 0.5f;
+
+            GUI.Label(new Rect(x, sh * 0.22f, feldBreite, sh * 0.05f), "IP des Hosts:", textStil);
+            onlineIp = GUI.TextField(new Rect(x, sh * 0.28f, feldBreite, sh * 0.05f), onlineIp);
+
+            GUI.Label(new Rect(x, sh * 0.36f, feldBreite, sh * 0.05f), "Room-Code:", textStil);
+            onlineCode = GUI.TextField(new Rect(x, sh * 0.42f, feldBreite, sh * 0.05f), onlineCode);
+
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.54f, sw * 0.22f, sh * 0.08f),
+                    "VERBINDEN", knopfStil))
+            {
+                zeigeOnlineBeitritt = false;
+                KampfOnline.Trete(onlineIp, onlineCode);
+            }
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.64f, sw * 0.22f, sh * 0.06f),
+                    "ZURÜCK", knopfStil))
+                zeigeOnlineBeitritt = false;
+        }
+
         // Steuerungs-Übersicht auf schwarzem Grund im Startmenü
         void ZeichneSteuerung(float sw, float sh)
         {
@@ -309,6 +350,8 @@ namespace NeonCatch
 
         void OnGUI()
         {
+            if (NetworkClient.active) return;   // Online-HUD zeichnet KampfNetzwerk
+
             if (knopfStil == null)
                 knopfStil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold };
 
@@ -331,14 +374,28 @@ namespace NeonCatch
                     return;
                 }
 
+                if (zeigeOnlineBeitritt)
+                {
+                    ZeichneOnlineBeitritt(sw, sh);
+                    return;
+                }
+
                 // START-Knopf (verschwindet, sobald der Kampf läuft)
-                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.045f);
-                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.78f, sw * 0.22f, sh * 0.09f),
-                        "START", knopfStil))
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
+                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.70f, sw * 0.26f, sh * 0.08f),
+                        "START (Solo mit Bots)", knopfStil))
                     StarteKampf();
 
-                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.03f);
-                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.88f, sw * 0.22f, sh * 0.06f),
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
+                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.79f, sw * 0.26f, sh * 0.055f),
+                        "ONLINE HOSTEN (Freunde + Bots)", knopfStil))
+                    KampfOnline.Hoste(botAnzahl);
+
+                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.85f, sw * 0.26f, sh * 0.055f),
+                        "ONLINE BEITRETEN", knopfStil))
+                    zeigeOnlineBeitritt = true;
+
+                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.91f, sw * 0.26f, sh * 0.05f),
                         "STEUERUNG", knopfStil))
                     zeigeSteuerung = true;
 

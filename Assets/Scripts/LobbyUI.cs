@@ -1,8 +1,10 @@
+using System.Collections;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using Mirror;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.UI;
 
 /// <summary>
@@ -19,14 +21,31 @@ public class LobbyUI : MonoBehaviour
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel;
     InputField ipFeld, codeFeld;
     Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText;
-    GameObject startButton, nochmalButton;
+    GameObject startButton, nochmalButton, kopierButton;
 
     static readonly Color Neon = new Color(0.1f, 0.95f, 0.95f);
+
+    string oeffentlicheIP = "wird geladen...";
+    float kopiertAnzeige;
 
     void Start()
     {
         schrift = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BaueUI();
+        StartCoroutine(HoleOeffentlicheIP());
+    }
+
+    // Oeffentliche IP von api.ipify.org holen (fuer Freunde uebers Internet)
+    IEnumerator HoleOeffentlicheIP()
+    {
+        using (UnityWebRequest anfrage = UnityWebRequest.Get("https://api.ipify.org"))
+        {
+            anfrage.timeout = 5;
+            yield return anfrage.SendWebRequest();
+            oeffentlicheIP = anfrage.result == UnityWebRequest.Result.Success
+                ? anfrage.downloadHandler.text.Trim()
+                : "nicht ermittelbar";
+        }
     }
 
     void Update()
@@ -56,8 +75,23 @@ public class LobbyUI : MonoBehaviour
 
     void AktualisiereLobby()
     {
-        lobbyCodeText.text = "ROOM-CODE: " + LobbyManager.RoomCode +
-                             (NetworkServer.active ? "\nDeine IP: " + LokaleIP() : "");
+        if (kopiertAnzeige > 0f) kopiertAnzeige -= Time.deltaTime;
+
+        if (NetworkServer.active)
+        {
+            lobbyCodeText.text = "ROOM-CODE: " + LobbyManager.RoomCode +
+                                 "\nWLAN-IP (gleiches Netz): " + LokaleIP() +
+                                 "\nInternet-IP: " + oeffentlicheIP;
+            kopierButton.SetActive(true);
+            var knopfText = kopierButton.GetComponentInChildren<Text>();
+            if (knopfText != null)
+                knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "In Zwischenablage kopieren";
+        }
+        else
+        {
+            lobbyCodeText.text = "Verbunden - warte auf den Host...";
+            kopierButton.SetActive(false);
+        }
 
         var spieler = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
                       .OrderBy(s => s.spielerNummer).ToArray();
@@ -142,11 +176,11 @@ public class LobbyUI : MonoBehaviour
         // ---------- Hauptmenue ----------
         hauptPanel = Panel(canvas.transform, "HauptPanel", 420, 340);
         Text(hauptPanel.transform, "FARBMIMIK", new Vector2(0, 120), 42, Neon);
-        Knopf(hauptPanel.transform, "Server starten", new Vector2(0, 35), () =>
+        Knopf(hauptPanel.transform, "Runde erstellen", new Vector2(0, 35), () =>
         {
             NetworkManager.singleton.StartHost();
         });
-        Knopf(hauptPanel.transform, "Code eingeben", new Vector2(0, -35), () =>
+        Knopf(hauptPanel.transform, "Runde beitreten", new Vector2(0, -35), () =>
         {
             hauptPanel.SetActive(false);
             beitretenPanel.SetActive(true);
@@ -154,7 +188,7 @@ public class LobbyUI : MonoBehaviour
 
         // ---------- Beitreten ----------
         beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 380);
-        Text(beitretenPanel.transform, "SPIEL BEITRETEN", new Vector2(0, 140), 30, Neon);
+        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 140), 30, Neon);
         Text(beitretenPanel.transform, "IP des Hosts:", new Vector2(0, 100), 18, Color.white);
         ipFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, 65), "z.B. 192.168.1.20");
         Text(beitretenPanel.transform, "Room-Code:", new Vector2(0, 25), 18, Color.white);
@@ -175,17 +209,33 @@ public class LobbyUI : MonoBehaviour
         beitretenPanel.SetActive(false);
 
         // ---------- Lobby ----------
-        lobbyPanel = Panel(canvas.transform, "LobbyPanel", 460, 420);
-        lobbyCodeText = Text(lobbyPanel.transform, "", new Vector2(0, 160), 30, Neon);
+        lobbyPanel = Panel(canvas.transform, "LobbyPanel", 520, 600);
+        lobbyCodeText = Text(lobbyPanel.transform, "", new Vector2(0, 235), 24, Neon);
+        lobbyCodeText.rectTransform.sizeDelta = new Vector2(480, 110);
+
+        kopierButton = Knopf(lobbyPanel.transform, "In Zwischenablage kopieren", new Vector2(0, 140), () =>
+        {
+            GUIUtility.systemCopyBuffer =
+                "Spiel mit! Room-Code: " + LobbyManager.RoomCode +
+                " | Internet-IP: " + oeffentlicheIP +
+                " | WLAN-IP: " + LokaleIP();
+            kopiertAnzeige = 2f;
+        }).gameObject;
+
         spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 30), 20, Color.white);
         spielerListeText.alignment = TextAnchor.UpperCenter;
-        spielerListeText.rectTransform.sizeDelta = new Vector2(400, 200);
-        startButton = Knopf(lobbyPanel.transform, "START (nur Host)", new Vector2(0, -120), () =>
+        spielerListeText.rectTransform.sizeDelta = new Vector2(460, 180);
+
+        var portHinweis = Text(lobbyPanel.transform, "", new Vector2(0, -160), 16, new Color(1f, 0.7f, 0.2f));
+        portHinweis.text = "Für Freunde im Internet: Port 7777 (UDP)\nim Router freigeben!";
+        portHinweis.rectTransform.sizeDelta = new Vector2(480, 50);
+
+        startButton = Knopf(lobbyPanel.transform, "SPIEL STARTEN (nur Host)", new Vector2(0, -215), () =>
         {
             if (NetworkServer.active)
                 GamePhaseManager.Instance.StarteSpiel();
         }).gameObject;
-        Knopf(lobbyPanel.transform, "Verlassen", new Vector2(0, -180), TrenneVerbindung);
+        Knopf(lobbyPanel.transform, "Verlassen", new Vector2(0, -275), TrenneVerbindung);
         lobbyPanel.SetActive(false);
 
         // ---------- Spiel-HUD ----------
