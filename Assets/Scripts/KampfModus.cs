@@ -331,9 +331,9 @@ namespace NeonCatch
                 zeigeOnlineBeitritt = false;
                 KampfOnline.Trete(onlineIp, onlineCode);
             }
-            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.028f);
             if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.72f, sw * 0.22f, sh * 0.05f),
-                    "HILFE: WAS MUSS ICH MACHEN?", knopfStil))
+                    "HILFE", knopfStil))
             {
                 hilfeInhalt = NetzwerkHilfe.BeitretenAnleitung;
                 hilfeZurueckZuBeitritt = true;
@@ -460,6 +460,9 @@ namespace NeonCatch
                         "ONLINE BEITRETEN", knopfStil))
                     zeigeOnlineBeitritt = true;
 
+                // kleinere Schrift fuer die schmalen Buttons unten, damit der
+                // Text sicher hineinpasst
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.91f, sw * 0.125f, sh * 0.05f),
                         "STEUERUNG", knopfStil))
                     zeigeSteuerung = true;

@@ -423,8 +423,15 @@ public class LobbyUI : MonoBehaviour
         button.colors = farben;
         button.onClick.AddListener(aktion);
 
+        // Text passt sich automatisch der Button-Groesse an (schrumpft bei
+        // langen Beschriftungen, statt ueber den Rand zu laufen)
         var text = Text(go.transform, beschriftung, Vector2.zero, 22, Color.white);
-        text.rectTransform.sizeDelta = bild.rectTransform.sizeDelta;
+        text.rectTransform.sizeDelta = bild.rectTransform.sizeDelta - new Vector2(16, 6);
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Truncate;
+        text.resizeTextForBestFit = true;
+        text.resizeTextMaxSize = 22;
+        text.resizeTextMinSize = 10;
         return button;
     }
 
