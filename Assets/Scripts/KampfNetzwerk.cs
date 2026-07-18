@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using Mirror;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -247,6 +249,7 @@ namespace NeonCatch
         Vector3 letztePos;
         bool rundeVorbeiGemeldet;
         float naechstePruefung;
+        float kopiertAnzeige;
 
         // Bot-KI (nur Server)
         Vector3 wanderRichtung;
@@ -384,6 +387,8 @@ namespace NeonCatch
                 }
 
                 if (RundeLaeuft && !tot) LokaleSteuerung();
+
+                if (kopiertAnzeige > 0f) kopiertAnzeige -= Time.deltaTime;
 
                 var kb = Keyboard.current;
                 if (kb != null && kb.escapeKey.wasPressedThisFrame)
@@ -710,6 +715,18 @@ namespace NeonCatch
         static Texture2D lobbyKartenTex;
         GUIStyle lobbyTextStil, lobbyTitelStil;
 
+        static string LokaleIP()
+        {
+            try
+            {
+                foreach (var ip in Dns.GetHostAddresses(Dns.GetHostName()))
+                    if (ip.AddressFamily == AddressFamily.InterNetwork)
+                        return ip.ToString();
+            }
+            catch { }
+            return "unbekannt";
+        }
+
         // Online-Lobby: Room-Code, Spielerliste mit Namen, Host startet die
         // Runde - Beschreibung auf leicht weissem Grund, Hintergrund bleibt sichtbar
         void ZeichneLobby(float sw, float sh)
@@ -738,25 +755,43 @@ namespace NeonCatch
             var karte = new Rect(sw * 0.5f - sw * 0.22f, sh * 0.08f, sw * 0.44f, sh * 0.8f);
             GUI.DrawTexture(karte, lobbyKartenTex);
 
-            float y = karte.y + sh * 0.02f;
-            lobbyTitelStil.fontSize = Mathf.RoundToInt(sh * 0.045f);
-            GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.06f), "ONLINE-LOBBY", lobbyTitelStil);
-            y += sh * 0.07f;
+            float y = karte.y + sh * 0.015f;
+            lobbyTitelStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
+            GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f), "ONLINE-LOBBY", lobbyTitelStil);
+            y += sh * 0.055f;
 
             lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
             GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f),
-                      "Room-Code: " + LobbyManager.RoomCode, lobbyTextStil);
+                      "Beitritts-Code: " + LobbyManager.RoomCode, lobbyTextStil);
             y += sh * 0.05f;
 
             if (NetworkServer.active)
             {
-                lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.019f);
-                GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f),
-                          "Freunde brauchen deine IP + diesen Code\n(Anleitung: HILFE im Startmenü)", lobbyTextStil);
+                // Code + IP mit einem Klick kopieren und an Freunde schicken
+                var kopierKnopf = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold };
+                kopierKnopf.fontSize = Mathf.RoundToInt(sh * 0.02f);
+                string kopierText = kopiertAnzeige > 0f ? "Kopiert! Jetzt verschicken." : "CODE + IP KOPIEREN";
+                if (GUI.Button(new Rect(karte.x + karte.width * 0.2f, y, karte.width * 0.6f, sh * 0.05f),
+                        kopierText, kopierKnopf))
+                {
+                    GUIUtility.systemCopyBuffer =
+                        "Spiel mit bei NEON BLASTER! Beitritts-Code: " + LobbyManager.RoomCode +
+                        " | Meine WLAN-IP: " + LokaleIP() +
+                        " | Starte das Spiel, klicke RUNDE BEITRETEN und gib IP + Code ein.";
+                    kopiertAnzeige = 2f;
+                }
                 y += sh * 0.06f;
+
+                // Kurzanleitung inkl. Fritzbox-Hinweis
+                lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.018f);
+                GUI.Label(new Rect(karte.x + karte.width * 0.05f, y, karte.width * 0.9f, sh * 0.08f),
+                          "Schick deinen Freunden Code + IP (Knopf oben). Im gleichen WLAN reicht das schon. " +
+                          "Übers Internet: vorher in der Fritzbox Port 7777 (UDP) freigeben - " +
+                          "genaue Anleitung unter HILFE im Startmenü.", lobbyTextStil);
+                y += sh * 0.085f;
             }
 
-            // Spielerliste mit Namen
+            // Wer tritt dem Spiel bei?
             int menschen = 0;
             string liste = "";
             foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
@@ -771,10 +806,17 @@ namespace NeonCatch
             if (botsZumAuffuellen > 0)
                 liste += "+ " + botsZumAuffuellen + " Bot(s) füllen die Runde auf\n";
 
-            lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
-            GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.3f),
-                      "Wer spielt mit (" + menschen + "/7):\n" + liste, lobbyTextStil);
-            y += sh * 0.28f;
+            lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
+            GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.22f),
+                      "Wer tritt bei (" + menschen + "/7):\n" + liste, lobbyTextStil);
+            y += sh * 0.2f;
+
+            // Kurze Spielerklaerung (2 Saetze)
+            lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.019f);
+            GUI.Label(new Rect(karte.x + karte.width * 0.05f, y, karte.width * 0.9f, sh * 0.07f),
+                      "So geht's: Jeder gegen jeden mit Farb-Blastern - 3 Leben, 3 Schuss, die einzeln nachladen. " +
+                      "Wer als Letzter übrig ist, gewinnt die Runde!", lobbyTextStil);
+            y += sh * 0.065f;
 
             if (endText != "")
             {

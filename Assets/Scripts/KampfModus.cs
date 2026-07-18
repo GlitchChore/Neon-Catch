@@ -55,6 +55,7 @@ namespace NeonCatch
         bool zeigeSteuerung;
         bool zeigeOnlineBeitritt;
         bool zeigeHilfe;
+        bool zeigeModusWahl;
         string hilfeInhalt = "";
         bool hilfeZurueckZuBeitritt;
         Texture2D menueHintergrund;
@@ -380,9 +381,9 @@ namespace NeonCatch
                 zeigeOnlineBeitritt = false;
         }
 
-        // Zwei Modus-Karten nebeneinander: NEON BLASTER (dieser Modus) und
-        // FARBMIMIK (Verstecken + Anmalen, eigene Szene). Beschreibungen auf
-        // leicht weissem Grund - das Hintergrundbild bleibt sichtbar.
+        // RUNDE ERSTELLEN - Schritt 1: Modus auswählen. Zwei Karten mit je
+        // 1-2 Sätzen Beschreibung auf leicht weissem Grund, darunter der
+        // Hosten-Knopf. Das Hintergrundbild bleibt sichtbar.
         void ZeichneModusKarten(float sw, float sh)
         {
             if (kartenTex == null)
@@ -393,51 +394,67 @@ namespace NeonCatch
             }
             if (kartenStil == null)
                 kartenStil = new GUIStyle(GUI.skin.label) { wordWrap = true, alignment = TextAnchor.UpperLeft };
-            kartenStil.fontSize = Mathf.RoundToInt(sh * 0.021f);
+            kartenStil.fontSize = Mathf.RoundToInt(sh * 0.023f);
             kartenStil.normal.textColor = new Color(0.1f, 0.1f, 0.12f);
             if (kartenTitelStil == null)
                 kartenTitelStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter };
-            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.034f);
+            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
             kartenTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
+            GUI.Label(new Rect(0f, sh * 0.06f, sw, sh * 0.07f), "RUNDE ERSTELLEN - Modus auswählen", kartenTitelStil);
 
-            float kartenBreite = sw * 0.27f, kartenHoehe = sh * 0.4f;
-            var links  = new Rect(sw * 0.5f - kartenBreite - sw * 0.015f, sh * 0.15f, kartenBreite, kartenHoehe);
-            var rechts = new Rect(sw * 0.5f + sw * 0.015f, sh * 0.15f, kartenBreite, kartenHoehe);
+            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.034f);
+            float kartenBreite = sw * 0.27f, kartenHoehe = sh * 0.42f;
+            var links  = new Rect(sw * 0.5f - kartenBreite - sw * 0.015f, sh * 0.17f, kartenBreite, kartenHoehe);
+            var rechts = new Rect(sw * 0.5f + sw * 0.015f, sh * 0.17f, kartenBreite, kartenHoehe);
 
             GUI.DrawTexture(links, kartenTex);
             GUI.DrawTexture(rechts, kartenTex);
 
             GUI.Label(new Rect(links.x, links.y + sh * 0.015f, links.width, sh * 0.05f),
                       "NEON BLASTER", kartenTitelStil);
-            GUI.Label(new Rect(links.x + sw * 0.012f, links.y + sh * 0.075f,
-                               links.width - sw * 0.024f, links.height - sh * 0.09f),
-                      "Abschießen - jeder gegen jeden!\n\n" +
-                      "Blaster mit 3 Schuss, 3 Leben, Farbkleckse überall. " +
-                      "Solo gegen Bots oder online mit Freunden - " +
-                      "freie Plätze füllen Bots auf.\n\n" +
-                      "Du bist hier! Unten auf START oder ONLINE klicken.", kartenStil);
+            GUI.Label(new Rect(links.x + sw * 0.012f, links.y + sh * 0.08f,
+                               links.width - sw * 0.024f, links.height - sh * 0.15f),
+                      "Abschießen - jeder gegen jeden mit Farb-Blastern! " +
+                      "Wer als Letzter übrig ist, gewinnt. Freie Plätze füllen Bots auf.", kartenStil);
 
             GUI.Label(new Rect(rechts.x, rechts.y + sh * 0.015f, rechts.width, sh * 0.05f),
                       "FARBMIMIK", kartenTitelStil);
-            GUI.Label(new Rect(rechts.x + sw * 0.012f, rechts.y + sh * 0.075f,
-                               rechts.width - sw * 0.024f, rechts.height - sh * 0.14f),
-                      "Verstecken + Anmalen!\n\n" +
-                      "90 Sekunden: Farbe mischen (Taste E, 3x wischen) und verstecken. " +
-                      "Dann sucht ein Sucher 30 Sekunden lang - " +
-                      "wer sich bewegt, blinkt neon!", kartenStil);
+            GUI.Label(new Rect(rechts.x + sw * 0.012f, rechts.y + sh * 0.08f,
+                               rechts.width - sw * 0.024f, rechts.height - sh * 0.15f),
+                      "Anmalen und verstecken! Danach sucht ein Sucher - " +
+                      "wer sich bewegt, blinkt neon auf.", kartenStil);
 
-            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
-            if (GUI.Button(new Rect(rechts.x + rechts.width * 0.15f, rechts.y + rechts.height - sh * 0.065f,
-                                    rechts.width * 0.7f, sh * 0.05f), "FARBMIMIK SPIELEN", knopfStil))
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
+            if (GUI.Button(new Rect(links.x + links.width * 0.12f, links.y + links.height - sh * 0.075f,
+                                    links.width * 0.76f, sh * 0.055f), "NEON BLASTER HOSTEN", knopfStil))
+            {
+                zeigeModusWahl = false;
+                KampfOnline.Hoste(botAnzahl);
+            }
+
+            if (GUI.Button(new Rect(rechts.x + rechts.width * 0.12f, rechts.y + rechts.height - sh * 0.075f,
+                                    rechts.width * 0.76f, sh * 0.055f), "FARBMIMIK HOSTEN", knopfStil))
             {
                 PlayerPrefs.SetString("NeonCatch_HauptSzene",
                     UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
                 if (Application.CanStreamedLevelBeLoaded("Farbmimik"))
+                {
+                    // Nach dem Szenenwechsel startet die FARBMIMIK-Lobby von selbst
+                    PlayerPrefs.SetInt("NeonCatch_AutoHost", 1);
                     UnityEngine.SceneManagement.SceneManager.LoadScene("Farbmimik");
+                }
                 else
+                {
+                    zeigeModusWahl = false;
                     endText = "Szene 'Farbmimik' fehlt in den Build Settings! " +
                               "(File > Build Settings > beide Szenen hinzufügen)";
+                }
             }
+
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.028f);
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.08f, sh * 0.66f, sw * 0.16f, sh * 0.06f),
+                    "ZURÜCK", knopfStil))
+                zeigeModusWahl = false;
         }
 
         // Eingebaute Online-Hilfe: gleiche Texte wie in der FARBMIMIK-Lobby
@@ -556,8 +573,21 @@ namespace NeonCatch
                     return;
                 }
 
-                // Modus-Karten mit Beschreibung (auf leicht weissem Grund)
-                ZeichneModusKarten(sw, sh);
+                if (zeigeModusWahl)
+                {
+                    ZeichneModusKarten(sw, sh);
+                    return;
+                }
+
+                // Titel
+                if (kartenTitelStil == null)
+                    kartenTitelStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter };
+                kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.07f);
+                kartenTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
+                GUI.Label(new Rect(0f, sh * 0.12f, sw, sh * 0.1f), "NEON CATCH", kartenTitelStil);
+                kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
+                GUI.Label(new Rect(0f, sh * 0.22f, sw, sh * 0.05f),
+                          "Online mit Freunden - oder solo gegen Bots", kartenTitelStil);
 
                 // Profil: einfacher Name, wird online in der Lobby angezeigt
                 if (textStil == null)
@@ -583,11 +613,11 @@ namespace NeonCatch
 
                 knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.79f, sw * 0.26f, sh * 0.055f),
-                        "ONLINE HOSTEN (Freunde + Bots)", knopfStil))
-                    KampfOnline.Hoste(botAnzahl);
+                        "RUNDE ERSTELLEN (Online, Modus wählen)", knopfStil))
+                    zeigeModusWahl = true;
 
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.85f, sw * 0.26f, sh * 0.055f),
-                        "ONLINE BEITRETEN", knopfStil))
+                        "RUNDE BEITRETEN (Code eingeben)", knopfStil))
                     zeigeOnlineBeitritt = true;
 
                 // kleinere Schrift fuer die schmalen Buttons unten, damit der

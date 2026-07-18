@@ -123,6 +123,15 @@ public class LobbyUI : MonoBehaviour
         schrift = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BaueUI();
         StartCoroutine(HoleOeffentlicheIP());
+
+        // Kam der Spieler ueber "FARBMIMIK HOSTEN" aus dem anderen Modus?
+        // Dann die Runde automatisch erstellen - er landet direkt in der Lobby.
+        if (PlayerPrefs.GetInt("NeonCatch_AutoHost", 0) == 1)
+        {
+            PlayerPrefs.SetInt("NeonCatch_AutoHost", 0);
+            if (Resources.Load<GameObject>("Spieler") != null)
+                NetworkManager.singleton.StartHost();
+        }
     }
 
     // Oeffentliche IP von api.ipify.org holen (fuer Freunde uebers Internet)
@@ -403,7 +412,13 @@ public class LobbyUI : MonoBehaviour
 
         spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 30), 20, Color.white);
         spielerListeText.alignment = TextAnchor.UpperCenter;
-        spielerListeText.rectTransform.sizeDelta = new Vector2(460, 180);
+        spielerListeText.rectTransform.sizeDelta = new Vector2(460, 145);
+
+        // Kurze Spielerklaerung (2 Saetze)
+        var erklaerung = Text(lobbyPanel.transform, "", new Vector2(0, -115), 15, new Color(0.85f, 0.85f, 0.85f));
+        erklaerung.text = "So geht's: 90 Sekunden Farbe mischen (Taste E, 3x wischen) und verstecken.\n" +
+                          "Danach sucht ein Sucher 30 Sekunden - wer sich bewegt, blinkt neon!";
+        erklaerung.rectTransform.sizeDelta = new Vector2(490, 55);
 
         var portKnopf = Knopf(lobbyPanel.transform, "Anleitung: So laden Freunde ein (Host)",
             new Vector2(0, -160), () => ZeigeHilfe(NetzwerkHilfe.HostAnleitung));
