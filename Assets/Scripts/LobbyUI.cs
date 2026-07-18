@@ -8,10 +8,34 @@ using UnityEngine.Networking;
 using UnityEngine.UI;
 
 /// <summary>
-/// Eingebaute Hilfe-Texte fuer BEIDE Modi - getrennt nach Rolle:
-/// HostAnleitung  = was der Ersteller der Runde machen muss (inkl. Portfreigabe)
+/// Spielerprofil: einfacher Name, gespeichert in PlayerPrefs.
+/// Wird in beiden Modi in Lobby und Spielerliste angezeigt.
+/// </summary>
+public static class SpielerProfil
+{
+    const string Schluessel = "NeonCatch_SpielerName";
+
+    public static string Name
+    {
+        get
+        {
+            string n = PlayerPrefs.GetString(Schluessel, "").Trim();
+            return n == "" ? "Spieler" : n;
+        }
+        set
+        {
+            string n = (value ?? "").Trim();
+            if (n.Length > 14) n = n.Substring(0, 14);
+            PlayerPrefs.SetString(Schluessel, n);
+        }
+    }
+}
+
+/// <summary>
+/// Eingebaute Hilfe-Texte für BEIDE Modi - getrennt nach Rolle:
+/// HostAnleitung = was der Ersteller der Runde machen muss (inkl. Portfreigabe)
 /// BeitretenAnleitung = was ein beitretender Freund machen muss
-/// Angezeigt in der FARBMIMIK-UI UND im Kampfmodus-Startmenue.
+/// Angezeigt in der FARBMIMIK-UI UND im Kampfmodus-Startmenü.
 /// </summary>
 public static class NetzwerkHilfe
 {
@@ -20,25 +44,25 @@ public static class NetzwerkHilfe
         "\n" +
         "1. 'Runde erstellen' klicken - du bekommst einen ROOM-CODE\n" +
         "2. Schick deinen Freunden den Code und deine IP\n" +
-        "    (der Kopieren-Knopf in der Lobby macht das fuer dich)\n" +
+        "    (der Kopieren-Knopf in der Lobby macht das für dich)\n" +
         "    - Freunde im GLEICHEN WLAN brauchen deine WLAN-IP\n" +
-        "    - Freunde UEBERS INTERNET brauchen deine Internet-IP\n" +
-        "3. Nur fuer Internet-Freunde: EINMAL Port 7777 (UDP)\n" +
+        "    - Freunde ÜBERS INTERNET brauchen deine Internet-IP\n" +
+        "3. Nur für Internet-Freunde: EINMAL Port 7777 (UDP)\n" +
         "    im Router freigeben - so geht das:\n" +
         "\n" +
         "FRITZBOX - 4 SCHRITTE:\n" +
-        "1. Im Browser  fritz.box  oeffnen und anmelden\n" +
+        "1. Im Browser  fritz.box  öffnen und anmelden\n" +
         "    (Passwort steht unten auf dem Router-Aufkleber)\n" +
         "2. Internet > Freigaben > Reiter 'Portfreigaben'\n" +
-        "3. 'Geraet fuer Freigaben hinzufuegen' > deinen PC waehlen\n" +
+        "3. 'Gerät für Freigaben hinzufügen' > deinen PC wählen\n" +
         "    > 'Neue Freigabe' > 'Portfreigabe'\n" +
         "4. Protokoll UDP, Port 7777 bis 7777 eintragen,\n" +
-        "    dann OK und Uebernehmen. Fertig!\n" +
+        "    dann OK und Übernehmen. Fertig!\n" +
         "\n" +
         "ANDERE ROUTER - 4 SCHRITTE:\n" +
-        "1. Router-Adresse im Browser oeffnen (steht auf dem\n" +
+        "1. Router-Adresse im Browser öffnen (steht auf dem\n" +
         "    Aufkleber, oft 192.168.1.1) und anmelden\n" +
-        "2. Menuepunkt 'Portfreigabe' oder 'Port Forwarding'\n" +
+        "2. Menüpunkt 'Portfreigabe' oder 'Port Forwarding'\n" +
         "    suchen (oft unter 'Erweitert')\n" +
         "3. Neue Regel: dein PC, Protokoll UDP, Port 7777\n" +
         "4. Speichern - fertig!\n" +
@@ -53,7 +77,7 @@ public static class NetzwerkHilfe
         "    (er kann dir beides mit einem Klick schicken)\n" +
         "2. IP eintragen:\n" +
         "    - Gleiches WLAN wie der Host: seine WLAN-IP\n" +
-        "    - Uebers Internet: seine INTERNET-IP\n" +
+        "    - Übers Internet: seine INTERNET-IP\n" +
         "3. Room-Code eintragen (z.B. X7K9)\n" +
         "4. 'Beitreten' klicken - fertig!\n" +
         "\n" +
@@ -61,11 +85,11 @@ public static class NetzwerkHilfe
         "die Portfreigabe braucht nur der Host.\n" +
         "\n" +
         "KOMMST DU NICHT REIN?\n" +
-        "- IP und Code Buchstabe fuer Buchstabe pruefen\n" +
+        "- IP und Code Buchstabe für Buchstabe prüfen\n" +
         "- Der Host muss die Runde schon erstellt haben\n" +
-        "- Uebers Internet: Der Host muss Port 7777 (UDP)\n" +
+        "- Übers Internet: Der Host muss Port 7777 (UDP)\n" +
         "    freigegeben haben (die Anleitung hat er im Spiel)\n" +
-        "- Notloesung: Alle installieren das kostenlose\n" +
+        "- Notlösung: Alle installieren das kostenlose\n" +
         "    'Tailscale' - dann geht es wie im gleichen WLAN.";
 }
 
@@ -81,8 +105,10 @@ public class LobbyUI : MonoBehaviour
 {
     Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
-    Text hilfeInhaltText;
+    Text hilfeInhaltText, beitretenStatusText;
     RawImage hintergrundBild;
+    Image weisserSchleier;
+    bool verbindungLief, warVollVerbunden;
     InputField ipFeld, codeFeld;
     Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText;
     GameObject startButton, nochmalButton, kopierButton;
@@ -120,8 +146,29 @@ public class LobbyUI : MonoBehaviour
             : SpielPhase.Lobby;
 
         // Hintergrundbild ueberall AUSSER im laufenden Spiel (Malen/Suchen)
-        if (hintergrundBild != null)
-            hintergrundBild.enabled = !(verbunden && (phase == SpielPhase.Malen || phase == SpielPhase.Suchen));
+        bool bildSichtbar = !(verbunden && (phase == SpielPhase.Malen || phase == SpielPhase.Suchen));
+        if (hintergrundBild != null) hintergrundBild.enabled = bildSichtbar;
+        if (weisserSchleier != null) weisserSchleier.enabled = bildSichtbar;
+
+        // Fehlgeschlagener Beitritts-Versuch? (falsche IP oder falscher Code)
+        if (NetworkClient.active)
+        {
+            verbindungLief = true;
+            if (NetworkClient.isConnected && NetworkClient.localPlayer != null)
+                warVollVerbunden = true;
+        }
+        else if (verbindungLief)
+        {
+            verbindungLief = false;
+            if (!warVollVerbunden)
+            {
+                hauptPanel.SetActive(false);
+                hilfePanel.SetActive(false);
+                beitretenPanel.SetActive(true);
+                beitretenStatusText.text = "Das ist nicht korrekt!\nIP oder Room-Code prüfen und nochmal versuchen.";
+            }
+            warVollVerbunden = false;
+        }
 
         hauptPanel.SetActive(!verbunden && !beitretenPanel.activeSelf && !hilfePanel.activeSelf);
         if (verbunden && beitretenPanel.activeSelf)
@@ -167,7 +214,7 @@ public class LobbyUI : MonoBehaviour
         string liste = "Spieler (" + spieler.Length + "/7):\n";
         foreach (var s in spieler)
         {
-            liste += "Spieler " + s.spielerNummer;
+            liste += s.spielerName != "" ? s.spielerName : "Spieler " + s.spielerNummer;
             if (s.spielerNummer == 1) liste += " (Host)";
             if (s.isLocalPlayer) liste += "  <- DU";
             liste += "\n";
@@ -248,6 +295,18 @@ public class LobbyUI : MonoBehaviour
             var fitter = hgGO.AddComponent<AspectRatioFitter>();
             fitter.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
             fitter.aspectRatio = (float)hintergrundTex.width / hintergrundTex.height;
+
+            // Leicht weisse Schicht ueber dem Bild - man sieht es noch,
+            // aber Schrift und Buttons sind viel besser lesbar
+            var schleierGO = new GameObject("WeisserSchleier");
+            schleierGO.transform.SetParent(canvas.transform, false);
+            weisserSchleier = schleierGO.AddComponent<Image>();
+            weisserSchleier.color = new Color(1f, 1f, 1f, 0.45f);
+            weisserSchleier.raycastTarget = false;
+            var schleierRect = weisserSchleier.rectTransform;
+            schleierRect.anchorMin = Vector2.zero;
+            schleierRect.anchorMax = Vector2.one;
+            schleierRect.sizeDelta = Vector2.zero;
         }
 
         if (FindAnyObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
@@ -258,9 +317,17 @@ public class LobbyUI : MonoBehaviour
         }
 
         // ---------- Hauptmenue ----------
-        hauptPanel = Panel(canvas.transform, "HauptPanel", 420, 340);
-        Text(hauptPanel.transform, "FARBMIMIK", new Vector2(0, 120), 42, Neon);
-        Knopf(hauptPanel.transform, "Runde erstellen", new Vector2(0, 35), () =>
+        hauptPanel = Panel(canvas.transform, "HauptPanel", 420, 470);
+        Text(hauptPanel.transform, "FARBMIMIK", new Vector2(0, 190), 42, Neon);
+        Text(hauptPanel.transform, "Verstecken + Anmalen", new Vector2(0, 150), 18, Color.white);
+
+        // Profil: einfacher Name, wird in der Lobby und im Spiel angezeigt
+        Text(hauptPanel.transform, "Dein Name:", new Vector2(0, 115), 16, Color.white);
+        var nameFeld = Eingabefeld(hauptPanel.transform, new Vector2(0, 85), "z.B. Robi");
+        nameFeld.text = PlayerPrefs.GetString("NeonCatch_SpielerName", "");
+        nameFeld.onValueChanged.AddListener(wert => SpielerProfil.Name = wert);
+
+        Knopf(hauptPanel.transform, "Runde erstellen", new Vector2(0, 20), () =>
         {
             // Ohne Spieler-Prefab wuerde die Runde leer starten - klarer Hinweis statt Chaos
             if (Resources.Load<GameObject>("Spieler") == null)
@@ -274,16 +341,29 @@ public class LobbyUI : MonoBehaviour
             NetworkManager.singleton.StartHost();
             ZeigeHilfe(NetzwerkHilfe.HostAnleitung);   // zeigt sofort, was der Host machen muss
         });
-        Knopf(hauptPanel.transform, "Runde beitreten", new Vector2(0, -35), () =>
+        Knopf(hauptPanel.transform, "Runde beitreten", new Vector2(0, -45), () =>
         {
             hauptPanel.SetActive(false);
             beitretenPanel.SetActive(true);
+            beitretenStatusText.text = "";
             ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung);   // zeigt sofort, was der Beitretende machen muss
+        });
+        Knopf(hauptPanel.transform, "Anderer Modus: NEON BLASTER", new Vector2(0, -110), () =>
+        {
+            string ziel = PlayerPrefs.GetString("NeonCatch_HauptSzene", "SampleScene");
+            if (Application.CanStreamedLevelBeLoaded(ziel))
+                UnityEngine.SceneManagement.SceneManager.LoadScene(ziel);
+            else
+                ZeigeHilfe("Szene '" + ziel + "' wurde nicht gefunden!\n\n" +
+                           "In Unity: File > Build Settings öffnen und beide\n" +
+                           "Szenen in die Liste ziehen. Dann klappt der Wechsel.");
         });
 
         // ---------- Beitreten ----------
-        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 440);
-        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 170), 30, Neon);
+        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 470);
+        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 195), 30, Neon);
+        beitretenStatusText = Text(beitretenPanel.transform, "", new Vector2(0, 145), 16, new Color(1f, 0.35f, 0.3f));
+        beitretenStatusText.rectTransform.sizeDelta = new Vector2(400, 45);
         Text(beitretenPanel.transform, "IP des Hosts:", new Vector2(0, 100), 18, Color.white);
         ipFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, 65), "z.B. 192.168.1.20");
         Text(beitretenPanel.transform, "Room-Code:", new Vector2(0, 25), 18, Color.white);
@@ -299,9 +379,10 @@ public class LobbyUI : MonoBehaviour
         var beitretenHilfe = Knopf(beitretenPanel.transform, "Hilfe: Was muss ich machen?",
             new Vector2(0, -130), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
         beitretenHilfe.GetComponentInChildren<Text>().color = new Color(1f, 0.7f, 0.2f);
-        Knopf(beitretenPanel.transform, "Zurueck", new Vector2(0, -190), () =>
+        Knopf(beitretenPanel.transform, "Zurück", new Vector2(0, -190), () =>
         {
             beitretenPanel.SetActive(false);
+            beitretenStatusText.text = "";
             hauptPanel.SetActive(true);
         });
         beitretenPanel.SetActive(false);
@@ -355,7 +436,7 @@ public class LobbyUI : MonoBehaviour
         // ---------- Ende ----------
         endePanel = Panel(canvas.transform, "EndePanel", 420, 300);
         endeText = Text(endePanel.transform, "SPIEL VORBEI!", new Vector2(0, 90), 36, Neon);
-        nochmalButton = Knopf(endePanel.transform, "Zurueck zur Lobby", new Vector2(0, 0), () =>
+        nochmalButton = Knopf(endePanel.transform, "Zurück zur Lobby", new Vector2(0, 0), () =>
         {
             if (NetworkServer.active)
                 GamePhaseManager.Instance.ZurueckZurLobby();
@@ -363,12 +444,13 @@ public class LobbyUI : MonoBehaviour
         Knopf(endePanel.transform, "Verlassen", new Vector2(0, -70), TrenneVerbindung);
         endePanel.SetActive(false);
 
-        // ---------- Hilfe (im Spiel eingebaute Anleitung, Text je nach Rolle) ----------
+        // ---------- Hilfe: Beschreibungen auf leicht weissem Grund ----------
         hilfePanel = Panel(canvas.transform, "HilfePanel", 620, 680);
-        hilfeInhaltText = Text(hilfePanel.transform, "", new Vector2(0, 20), 17, Color.white);
+        hilfePanel.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.88f);
+        hilfeInhaltText = Text(hilfePanel.transform, "", new Vector2(0, 20), 17, new Color(0.1f, 0.1f, 0.12f));
         hilfeInhaltText.alignment = TextAnchor.UpperCenter;
         hilfeInhaltText.rectTransform.sizeDelta = new Vector2(580, 580);
-        Knopf(hilfePanel.transform, "Zurueck", new Vector2(0, -300), () => hilfePanel.SetActive(false));
+        Knopf(hilfePanel.transform, "Zurück", new Vector2(0, -300), () => hilfePanel.SetActive(false));
         hilfePanel.SetActive(false);
     }
 

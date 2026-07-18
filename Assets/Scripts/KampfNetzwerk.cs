@@ -16,6 +16,10 @@ namespace NeonCatch
     {
         public static int BotAnzahl = 4;
 
+        /// <summary>So viele Kaempfer insgesamt pro Runde - fehlende
+        /// Plaetze werden beim Rundenstart mit Bots aufgefuellt.</summary>
+        public static int ZielKaempfer = 5;
+
         public static void Hoste(int bots)
         {
             if (!PruefePrefabs())
@@ -81,7 +85,9 @@ namespace NeonCatch
     /// </summary>
     public class KampfLobbyManager : LobbyManager
     {
-        bool botsGespawnt;
+        /// <summary>Laeuft gerade eine Runde? (nur auf dem Server gueltig)</summary>
+        public static bool RundeAktivServer;
+
         Vector3 spawnBasis;
         bool spawnBasisGesetzt;
 
@@ -114,28 +120,50 @@ namespace NeonCatch
             GameObject spieler = Instantiate(playerPrefab, pos, Quaternion.identity);
             NetworkServer.AddPlayerForConnection(conn, spieler);
 
-            if (!botsGespawnt)
-            {
-                botsGespawnt = true;
-                SpawneBots();
-            }
+            // Spaeter Beitretende erfahren sofort, ob schon eine Runde laeuft
+            spieler.GetComponent<KampfNetzwerk>().TargetRundeStatus(conn, RundeAktivServer);
+        }
+
+        public override void OnStartServer()
+        {
+            RundeAktivServer = false;
+            base.OnStartServer();
         }
 
         public override void OnStopServer()
         {
-            botsGespawnt = false;
+            RundeAktivServer = false;
             spawnBasisGesetzt = false;
             base.OnStopServer();
         }
 
-        void SpawneBots()
+        /// <summary>Vom Host aus der Lobby gestartet: Spieler zuruecksetzen,
+        /// fehlende Plaetze mit Bots auffuellen, los!</summary>
+        public void StarteRunde()
+        {
+            if (RundeAktivServer) return;
+
+            int menschen = 0;
+            foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
+            {
+                if (k.istBot) { NetworkServer.Destroy(k.gameObject); continue; }
+                menschen++;
+                k.ResetFuerRunde();
+            }
+
+            int botAnzahl = Mathf.Max(0, KampfOnline.ZielKaempfer - menschen);
+            SpawneBots(botAnzahl);
+            RundeAktivServer = true;
+        }
+
+        void SpawneBots(int anzahl)
         {
             GameObject botPrefab = Resources.Load<GameObject>("KampfBotNetz");
             if (botPrefab == null) return;
 
-            for (int i = 0; i < KampfOnline.BotAnzahl; i++)
+            for (int i = 0; i < anzahl; i++)
             {
-                GameObject bot = Instantiate(botPrefab, SucheBotPlatz(i, KampfOnline.BotAnzahl),
+                GameObject bot = Instantiate(botPrefab, SucheBotPlatz(i, anzahl),
                                              Quaternion.identity);
                 bot.name = "NetzBot_" + (i + 1);
                 var netz = bot.GetComponent<KampfNetzwerk>();
@@ -197,8 +225,12 @@ namespace NeonCatch
         [SyncVar] public bool istBot;
         [SyncVar] public int botNummer = 1;      // welches KI/Bot_N-Modell
         [SyncVar] public int spielerNummer;      // 1-7 fuer Menschen
+        [SyncVar] public string spielerName = "";
         [SyncVar(hook = nameof(BeiLebenAenderung))] public int leben;
         [SyncVar(hook = nameof(BeiTod))] public bool tot;
+
+        /// <summary>Sicht der Clients: laeuft gerade eine Runde? (false = Lobby)</summary>
+        public static bool RundeLaeuft;
 
         static string endText = "";
         static GameObject soloSpieler;   // deaktivierter Einzelspieler waehrend der Online-Runde
@@ -275,17 +307,26 @@ namespace NeonCatch
             eigeneKamera = kamGO.AddComponent<Camera>();
             kamGO.AddComponent<AudioListener>();
 
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            // Cursor bleibt frei - erst beim Rundenstart wird er gesperrt (Lobby!)
             munition = maxMunition;
             endText = "";
+            CmdSetzeName(SpielerProfil.Name);
         }
 
         public override void OnStopLocalPlayer()
         {
             if (soloSpieler != null) soloSpieler.SetActive(true);
+            RundeLaeuft = false;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
+        }
+
+        [Command]
+        void CmdSetzeName(string name)
+        {
+            name = (name ?? "").Trim();
+            if (name.Length > 14) name = name.Substring(0, 14);
+            spielerName = name;
         }
 
         // Sichtbare Figur (Synty-Modell) fuer Bots und MITSPIELER -
@@ -324,12 +365,25 @@ namespace NeonCatch
 
         void Update()
         {
-            if (isServer && istBot && !tot)
+            if (isServer && istBot && !tot && KampfLobbyManager.RundeAktivServer)
                 BotKI();
 
             if (isLocalPlayer)
             {
-                if (!tot) LokaleSteuerung();
+                // Cursor: in der Lobby frei (zum Klicken), im Kampf gesperrt
+                bool sperren = RundeLaeuft && !tot;
+                if (sperren && Cursor.lockState != CursorLockMode.Locked)
+                {
+                    Cursor.lockState = CursorLockMode.Locked;
+                    Cursor.visible = false;
+                }
+                else if (!sperren && Cursor.lockState == CursorLockMode.Locked)
+                {
+                    Cursor.lockState = CursorLockMode.None;
+                    Cursor.visible = true;
+                }
+
+                if (RundeLaeuft && !tot) LokaleSteuerung();
 
                 var kb = Keyboard.current;
                 if (kb != null && kb.escapeKey.wasPressedThisFrame)
@@ -400,8 +454,51 @@ namespace NeonCatch
         [Command]
         void CmdSchiesse(Vector3 start, Vector3 richtung)
         {
-            if (tot) return;
+            if (tot || !KampfLobbyManager.RundeAktivServer) return;
             FuehreSchussAus(start, richtung);
+        }
+
+        /// <summary>Host klickt in der Lobby auf RUNDE STARTEN.</summary>
+        [Command]
+        void CmdStarteRunde()
+        {
+            // Nur die Host-Verbindung darf starten
+            if (!(connectionToClient is LocalConnectionToClient)) return;
+            var manager = NetworkManager.singleton as KampfLobbyManager;
+            if (manager == null) return;
+            manager.StarteRunde();
+            RpcRundeStatus(true);
+        }
+
+        [Server]
+        public void ResetFuerRunde()
+        {
+            leben = maxLeben;
+            tot = false;
+            rundeVorbeiGemeldet = false;
+        }
+
+        [TargetRpc]
+        public void TargetRundeStatus(NetworkConnectionToClient ziel, bool laeuft)
+        {
+            RundeLaeuft = laeuft;
+        }
+
+        [ClientRpc]
+        void RpcRundeStatus(bool laeuft)
+        {
+            RundeLaeuft = laeuft;
+            if (laeuft)
+            {
+                endText = "";
+                var lokal = NetworkClient.localPlayer != null
+                    ? NetworkClient.localPlayer.GetComponent<KampfNetzwerk>() : null;
+                if (lokal != null)
+                {
+                    lokal.munition = lokal.maxMunition;
+                    lokal.nachladeRest = 0f;
+                }
+            }
         }
 
         [Server]
@@ -438,7 +535,7 @@ namespace NeonCatch
         [Server]
         public void NimmSchaden()
         {
-            if (tot) return;
+            if (tot || !KampfLobbyManager.RundeAktivServer) return;
             leben--;
             if (leben <= 0)
             {
@@ -464,7 +561,14 @@ namespace NeonCatch
 
         void BeiTod(bool alt, bool neu)
         {
-            if (!neu) return;
+            if (!neu)
+            {
+                // Wiederbelebt fuer die naechste Runde: Figur frisch aufbauen
+                if (visual != null) { Destroy(visual); visual = null; visualAnim = null; }
+                BaueVisual();
+                if (herzen != null) herzen.SetzeLeben(maxLeben);
+                return;
+            }
 
             if (visualAnim != null) visualAnim.SpieleTod();
             else if (visual != null) visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
@@ -482,6 +586,7 @@ namespace NeonCatch
         [Server]
         void PruefeRundenEnde()
         {
+            if (!KampfLobbyManager.RundeAktivServer) return;
             if (rundeVorbeiGemeldet || Time.time < naechstePruefung) return;
             naechstePruefung = Time.time + 1f;
 
@@ -496,17 +601,29 @@ namespace NeonCatch
             if (lebendig <= 1)
             {
                 rundeVorbeiGemeldet = true;
+                KampfLobbyManager.RundeAktivServer = false;
                 string sieger = letzter == null ? "niemand"
                     : letzter.istBot ? "Bot " + letzter.botNummer
+                    : letzter.spielerName != "" ? letzter.spielerName
                     : "Spieler " + letzter.spielerNummer;
                 RpcRundenEnde(sieger);
+                // Kurz die Sieger-Anzeige stehen lassen, dann zurueck in die Lobby
+                Invoke(nameof(RaeumeRundeAuf), 5f);
             }
+        }
+
+        [Server]
+        void RaeumeRundeAuf()
+        {
+            foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
+                if (k.istBot) NetworkServer.Destroy(k.gameObject);
+            RpcRundeStatus(false);
         }
 
         [ClientRpc]
         void RpcRundenEnde(string sieger)
         {
-            endText = "RUNDE VORBEI - Sieger: " + sieger + "   (ESC = Verlassen)";
+            endText = "RUNDE VORBEI - Sieger: " + sieger;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }
@@ -590,6 +707,104 @@ namespace NeonCatch
 
         // ---------- HUD (nur lokaler Spieler) ----------
 
+        static Texture2D lobbyKartenTex;
+        GUIStyle lobbyTextStil, lobbyTitelStil;
+
+        // Online-Lobby: Room-Code, Spielerliste mit Namen, Host startet die
+        // Runde - Beschreibung auf leicht weissem Grund, Hintergrund bleibt sichtbar
+        void ZeichneLobby(float sw, float sh)
+        {
+            if (lobbyKartenTex == null)
+            {
+                lobbyKartenTex = new Texture2D(1, 1);
+                lobbyKartenTex.SetPixel(0, 0, new Color(1f, 1f, 1f, 0.85f));
+                lobbyKartenTex.Apply();
+            }
+            if (lobbyTextStil == null)
+                lobbyTextStil = new GUIStyle(GUI.skin.label)
+                { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter, wordWrap = true };
+            if (lobbyTitelStil == null)
+                lobbyTitelStil = new GUIStyle(GUI.skin.label)
+                { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter };
+            lobbyTextStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
+            lobbyTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
+
+            // Leicht weisse Schicht ueber dem ganzen Bild
+            Color alt = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, 0.4f);
+            GUI.DrawTexture(new Rect(0f, 0f, sw, sh), Texture2D.whiteTexture);
+            GUI.color = alt;
+
+            var karte = new Rect(sw * 0.5f - sw * 0.22f, sh * 0.08f, sw * 0.44f, sh * 0.8f);
+            GUI.DrawTexture(karte, lobbyKartenTex);
+
+            float y = karte.y + sh * 0.02f;
+            lobbyTitelStil.fontSize = Mathf.RoundToInt(sh * 0.045f);
+            GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.06f), "ONLINE-LOBBY", lobbyTitelStil);
+            y += sh * 0.07f;
+
+            lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
+            GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f),
+                      "Room-Code: " + LobbyManager.RoomCode, lobbyTextStil);
+            y += sh * 0.05f;
+
+            if (NetworkServer.active)
+            {
+                lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.019f);
+                GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f),
+                          "Freunde brauchen deine IP + diesen Code\n(Anleitung: HILFE im Startmenü)", lobbyTextStil);
+                y += sh * 0.06f;
+            }
+
+            // Spielerliste mit Namen
+            int menschen = 0;
+            string liste = "";
+            foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
+            {
+                if (k.istBot) continue;
+                menschen++;
+                liste += (k.spielerName != "" ? k.spielerName : "Spieler " + k.spielerNummer);
+                if (k.isLocalPlayer) liste += "  <- DU";
+                liste += "\n";
+            }
+            int botsZumAuffuellen = Mathf.Max(0, KampfOnline.ZielKaempfer - menschen);
+            if (botsZumAuffuellen > 0)
+                liste += "+ " + botsZumAuffuellen + " Bot(s) füllen die Runde auf\n";
+
+            lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
+            GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.3f),
+                      "Wer spielt mit (" + menschen + "/7):\n" + liste, lobbyTextStil);
+            y += sh * 0.28f;
+
+            if (endText != "")
+            {
+                lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
+                GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f), endText, lobbyTextStil);
+            }
+            y += sh * 0.055f;
+
+            var knopf = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, wordWrap = true };
+            knopf.fontSize = Mathf.RoundToInt(sh * 0.028f);
+            if (NetworkServer.active)
+            {
+                if (GUI.Button(new Rect(karte.x + karte.width * 0.15f, y, karte.width * 0.7f, sh * 0.07f),
+                        "RUNDE STARTEN", knopf))
+                    CmdStarteRunde();
+            }
+            else
+            {
+                lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
+                GUI.Label(new Rect(karte.x, y + sh * 0.01f, karte.width, sh * 0.06f),
+                          "Warte, bis der Host die Runde startet ...", lobbyTextStil);
+            }
+            y += sh * 0.08f;
+
+            knopf.fontSize = Mathf.RoundToInt(sh * 0.022f);
+            if (GUI.Button(new Rect(karte.x + karte.width * 0.25f, y, karte.width * 0.5f, sh * 0.05f),
+                    "VERLASSEN (ESC)", knopf))
+                KampfOnline.Verlasse();
+        }
+
         void OnGUI()
         {
             if (!isLocalPlayer) return;
@@ -598,6 +813,13 @@ namespace NeonCatch
                 hudStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
 
             float sw = Screen.width, sh = Screen.height;
+
+            // Lobby statt Kampf-HUD, solange keine Runde laeuft
+            if (!RundeLaeuft)
+            {
+                ZeichneLobby(sw, sh);
+                return;
+            }
 
             // Room-Code oben links (der Host gibt Code + IP an seine Freunde)
             hudStil.alignment = TextAnchor.UpperLeft;

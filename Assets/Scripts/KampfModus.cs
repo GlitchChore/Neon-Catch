@@ -59,6 +59,10 @@ namespace NeonCatch
         bool hilfeZurueckZuBeitritt;
         Texture2D menueHintergrund;
         bool hintergrundGesucht;
+        string nameEingabe;
+        bool onlineLiefGerade, onlineWarVerbunden;
+        static Texture2D kartenTex;
+        GUIStyle kartenStil, kartenTitelStil;
         string onlineIp = "";
         string onlineCode = "";
 
@@ -75,6 +79,7 @@ namespace NeonCatch
         void Awake()
         {
             Instanz = this;
+            nameEingabe = SpielerProfil.Name;
         }
 
         // Spawn-Position merken, sobald der Spieler auffindbar ist
@@ -242,7 +247,7 @@ namespace NeonCatch
                 endText = "GESTORBEN – Platz " + platz + " von " + (botsGesamt + 1) +
                            ". Drücke START für eine neue Runde.";
             else
-                endText = "Aufgegeben. Drücke START für eine neue Runde.";
+                endText = "Drücke START für eine neue Runde.";
 
             // Restliche Bots einsammeln
             foreach (KampfBot bot in bots)
@@ -267,10 +272,24 @@ namespace NeonCatch
             // aber ESC funktioniert IMMER als Notausgang zurueck ins Menue
             if (NetworkClient.active)
             {
+                onlineLiefGerade = true;
+                if (NetworkClient.isConnected && NetworkClient.localPlayer != null)
+                    onlineWarVerbunden = true;
+
                 var tastatur = Keyboard.current;
                 if (tastatur != null && tastatur.escapeKey.wasPressedThisFrame)
                     KampfOnline.Verlasse();
                 return;
+            }
+
+            // Gerade aus einem Online-Versuch zurueckgekommen?
+            if (onlineLiefGerade)
+            {
+                onlineLiefGerade = false;
+                endText = onlineWarVerbunden
+                    ? "Drücke START für eine neue Runde."
+                    : "Das ist nicht korrekt! IP oder Room-Code prüfen und nochmal versuchen.";
+                onlineWarVerbunden = false;
             }
 
             MerkeStartPosition();
@@ -301,9 +320,10 @@ namespace NeonCatch
             textStil.fontSize = Mathf.RoundToInt(Screen.height * groesseAnteil);
 
             var rect = new Rect(10f, Screen.height * yAnteil, Screen.width - 20f, Screen.height * 0.08f);
-            textStil.normal.textColor = Color.black;
-            GUI.Label(new Rect(rect.x + 2f, rect.y + 2f, rect.width, rect.height), text, textStil);
+            // Heller Schatten + dunkle Schrift - gut lesbar auf dem hellen Menue
             textStil.normal.textColor = Color.white;
+            GUI.Label(new Rect(rect.x + 2f, rect.y + 2f, rect.width, rect.height), text, textStil);
+            textStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
             GUI.Label(rect, text, textStil);
         }
 
@@ -326,7 +346,7 @@ namespace NeonCatch
                 textStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
             textStil.alignment = TextAnchor.MiddleLeft;
             textStil.fontSize = Mathf.RoundToInt(sh * 0.03f);
-            textStil.normal.textColor = Color.white;
+            textStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
 
             float feldBreite = sw * 0.3f;
             float x = sw * 0.5f - feldBreite * 0.5f;
@@ -360,6 +380,66 @@ namespace NeonCatch
                 zeigeOnlineBeitritt = false;
         }
 
+        // Zwei Modus-Karten nebeneinander: NEON BLASTER (dieser Modus) und
+        // FARBMIMIK (Verstecken + Anmalen, eigene Szene). Beschreibungen auf
+        // leicht weissem Grund - das Hintergrundbild bleibt sichtbar.
+        void ZeichneModusKarten(float sw, float sh)
+        {
+            if (kartenTex == null)
+            {
+                kartenTex = new Texture2D(1, 1);
+                kartenTex.SetPixel(0, 0, new Color(1f, 1f, 1f, 0.85f));
+                kartenTex.Apply();
+            }
+            if (kartenStil == null)
+                kartenStil = new GUIStyle(GUI.skin.label) { wordWrap = true, alignment = TextAnchor.UpperLeft };
+            kartenStil.fontSize = Mathf.RoundToInt(sh * 0.021f);
+            kartenStil.normal.textColor = new Color(0.1f, 0.1f, 0.12f);
+            if (kartenTitelStil == null)
+                kartenTitelStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter };
+            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.034f);
+            kartenTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
+
+            float kartenBreite = sw * 0.27f, kartenHoehe = sh * 0.4f;
+            var links  = new Rect(sw * 0.5f - kartenBreite - sw * 0.015f, sh * 0.15f, kartenBreite, kartenHoehe);
+            var rechts = new Rect(sw * 0.5f + sw * 0.015f, sh * 0.15f, kartenBreite, kartenHoehe);
+
+            GUI.DrawTexture(links, kartenTex);
+            GUI.DrawTexture(rechts, kartenTex);
+
+            GUI.Label(new Rect(links.x, links.y + sh * 0.015f, links.width, sh * 0.05f),
+                      "NEON BLASTER", kartenTitelStil);
+            GUI.Label(new Rect(links.x + sw * 0.012f, links.y + sh * 0.075f,
+                               links.width - sw * 0.024f, links.height - sh * 0.09f),
+                      "Abschießen - jeder gegen jeden!\n\n" +
+                      "Blaster mit 3 Schuss, 3 Leben, Farbkleckse überall. " +
+                      "Solo gegen Bots oder online mit Freunden - " +
+                      "freie Plätze füllen Bots auf.\n\n" +
+                      "Du bist hier! Unten auf START oder ONLINE klicken.", kartenStil);
+
+            GUI.Label(new Rect(rechts.x, rechts.y + sh * 0.015f, rechts.width, sh * 0.05f),
+                      "FARBMIMIK", kartenTitelStil);
+            GUI.Label(new Rect(rechts.x + sw * 0.012f, rechts.y + sh * 0.075f,
+                               rechts.width - sw * 0.024f, rechts.height - sh * 0.14f),
+                      "Verstecken + Anmalen!\n\n" +
+                      "90 Sekunden: Farbe mischen (Taste E, 3x wischen) und verstecken. " +
+                      "Dann sucht ein Sucher 30 Sekunden lang - " +
+                      "wer sich bewegt, blinkt neon!", kartenStil);
+
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+            if (GUI.Button(new Rect(rechts.x + rechts.width * 0.15f, rechts.y + rechts.height - sh * 0.065f,
+                                    rechts.width * 0.7f, sh * 0.05f), "FARBMIMIK SPIELEN", knopfStil))
+            {
+                PlayerPrefs.SetString("NeonCatch_HauptSzene",
+                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+                if (Application.CanStreamedLevelBeLoaded("Farbmimik"))
+                    UnityEngine.SceneManagement.SceneManager.LoadScene("Farbmimik");
+                else
+                    endText = "Szene 'Farbmimik' fehlt in den Build Settings! " +
+                              "(File > Build Settings > beide Szenen hinzufügen)";
+            }
+        }
+
         // Eingebaute Online-Hilfe: gleiche Texte wie in der FARBMIMIK-Lobby
         // (NetzwerkHilfe.HostAnleitung bzw. .BeitretenAnleitung, je nachdem
         // woher die Hilfe geoeffnet wurde)
@@ -368,7 +448,7 @@ namespace NeonCatch
             if (steuerungStil == null)
                 steuerungStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft };
             steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.021f);
-            steuerungStil.normal.textColor = Color.white;
+            steuerungStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
 
             GUI.Label(new Rect(sw * 0.5f - sw * 0.28f, sh * 0.04f, sw * 0.56f, sh * 0.76f),
                        hilfeInhalt, steuerungStil);
@@ -392,7 +472,7 @@ namespace NeonCatch
             if (steuerungStil == null)
                 steuerungStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft };
             steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
-            steuerungStil.normal.textColor = Color.white;
+            steuerungStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
 
             GUI.Label(new Rect(sw * 0.5f - sw * 0.28f, sh * 0.14f, sw * 0.56f, sh * 0.6f),
                        steuerungText, steuerungStil);
@@ -445,12 +525,13 @@ namespace NeonCatch
                 {
                     GUI.color = Color.white;
                     GUI.DrawTexture(new Rect(0f, 0f, sw, sh), menueHintergrund, ScaleMode.ScaleAndCrop);
-                    GUI.color = new Color(0f, 0f, 0f, 0.45f);   // Abdunkeln für Lesbarkeit
+                    // Leicht weisse Schicht: Bild bleibt sichtbar, Schrift gut lesbar
+                    GUI.color = new Color(1f, 1f, 1f, 0.5f);
                     GUI.DrawTexture(new Rect(0f, 0f, sw, sh), Texture2D.whiteTexture);
                 }
                 else
                 {
-                    GUI.color = Color.black;
+                    GUI.color = new Color(0.88f, 0.88f, 0.9f);
                     GUI.DrawTexture(new Rect(0f, 0f, sw, sh), Texture2D.whiteTexture);
                 }
                 GUI.color = altBg;
@@ -473,6 +554,25 @@ namespace NeonCatch
                 {
                     ZeichneHilfe(sw, sh);
                     return;
+                }
+
+                // Modus-Karten mit Beschreibung (auf leicht weissem Grund)
+                ZeichneModusKarten(sw, sh);
+
+                // Profil: einfacher Name, wird online in der Lobby angezeigt
+                if (textStil == null)
+                    textStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+                textStil.alignment = TextAnchor.MiddleRight;
+                textStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
+                textStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
+                GUI.Label(new Rect(sw * 0.5f - sw * 0.24f, sh * 0.635f, sw * 0.13f, sh * 0.045f),
+                          "Dein Name:", textStil);
+                string neuerName = GUI.TextField(new Rect(sw * 0.5f - sw * 0.10f, sh * 0.635f,
+                                                          sw * 0.22f, sh * 0.045f), nameEingabe ?? "");
+                if (neuerName != nameEingabe)
+                {
+                    nameEingabe = neuerName;
+                    SpielerProfil.Name = neuerName;
                 }
 
                 // START-Knopf (verschwindet, sobald der Kampf läuft)

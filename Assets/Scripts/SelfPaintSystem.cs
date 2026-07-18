@@ -14,6 +14,9 @@ public class SelfPaintSystem : NetworkBehaviour
     [SyncVar]
     public int spielerNummer = -1;
 
+    [SyncVar]
+    public string spielerName = "";
+
     [SyncVar(hook = nameof(BeiFarbwechsel))]
     public Color spielerFarbe = Color.white;
 
@@ -50,6 +53,19 @@ public class SelfPaintSystem : NetworkBehaviour
                 belegt[s.spielerNummer] = true;
         for (int i = 1; i <= 7; i++)
             if (!belegt[i]) { spielerNummer = i; break; }
+    }
+
+    public override void OnStartLocalPlayer()
+    {
+        CmdSetzeName(SpielerProfil.Name);
+    }
+
+    [Command]
+    void CmdSetzeName(string name)
+    {
+        name = (name ?? "").Trim();
+        if (name.Length > 14) name = name.Substring(0, 14);
+        spielerName = name;
     }
 
     void BeiFarbwechsel(Color alt, Color neu)
