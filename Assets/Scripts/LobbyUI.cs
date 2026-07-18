@@ -8,6 +8,68 @@ using UnityEngine.Networking;
 using UnityEngine.UI;
 
 /// <summary>
+/// Eingebaute Hilfe-Texte fuer BEIDE Modi - getrennt nach Rolle:
+/// HostAnleitung  = was der Ersteller der Runde machen muss (inkl. Portfreigabe)
+/// BeitretenAnleitung = was ein beitretender Freund machen muss
+/// Angezeigt in der FARBMIMIK-UI UND im Kampfmodus-Startmenue.
+/// </summary>
+public static class NetzwerkHilfe
+{
+    public const string HostAnleitung =
+        "DU BIST DER HOST (RUNDE ERSTELLEN)\n" +
+        "\n" +
+        "1. 'Runde erstellen' klicken - du bekommst einen ROOM-CODE\n" +
+        "2. Schick deinen Freunden den Code und deine IP\n" +
+        "    (der Kopieren-Knopf in der Lobby macht das fuer dich)\n" +
+        "    - Freunde im GLEICHEN WLAN brauchen deine WLAN-IP\n" +
+        "    - Freunde UEBERS INTERNET brauchen deine Internet-IP\n" +
+        "3. Nur fuer Internet-Freunde: EINMAL Port 7777 (UDP)\n" +
+        "    im Router freigeben - so geht das:\n" +
+        "\n" +
+        "FRITZBOX - 4 SCHRITTE:\n" +
+        "1. Im Browser  fritz.box  oeffnen und anmelden\n" +
+        "    (Passwort steht unten auf dem Router-Aufkleber)\n" +
+        "2. Internet > Freigaben > Reiter 'Portfreigaben'\n" +
+        "3. 'Geraet fuer Freigaben hinzufuegen' > deinen PC waehlen\n" +
+        "    > 'Neue Freigabe' > 'Portfreigabe'\n" +
+        "4. Protokoll UDP, Port 7777 bis 7777 eintragen,\n" +
+        "    dann OK und Uebernehmen. Fertig!\n" +
+        "\n" +
+        "ANDERE ROUTER - 4 SCHRITTE:\n" +
+        "1. Router-Adresse im Browser oeffnen (steht auf dem\n" +
+        "    Aufkleber, oft 192.168.1.1) und anmelden\n" +
+        "2. Menuepunkt 'Portfreigabe' oder 'Port Forwarding'\n" +
+        "    suchen (oft unter 'Erweitert')\n" +
+        "3. Neue Regel: dein PC, Protokoll UDP, Port 7777\n" +
+        "4. Speichern - fertig!\n" +
+        "\n" +
+        "Klappt es trotzdem nicht? Alle installieren das\n" +
+        "kostenlose 'Tailscale' - dann geht es wie im WLAN.";
+
+    public const string BeitretenAnleitung =
+        "DU TRITTST EINER RUNDE BEI\n" +
+        "\n" +
+        "1. Frag den Host nach seiner IP und dem ROOM-CODE\n" +
+        "    (er kann dir beides mit einem Klick schicken)\n" +
+        "2. IP eintragen:\n" +
+        "    - Gleiches WLAN wie der Host: seine WLAN-IP\n" +
+        "    - Uebers Internet: seine INTERNET-IP\n" +
+        "3. Room-Code eintragen (z.B. X7K9)\n" +
+        "4. 'Beitreten' klicken - fertig!\n" +
+        "\n" +
+        "Du musst NICHTS am Router einstellen -\n" +
+        "die Portfreigabe braucht nur der Host.\n" +
+        "\n" +
+        "KOMMST DU NICHT REIN?\n" +
+        "- IP und Code Buchstabe fuer Buchstabe pruefen\n" +
+        "- Der Host muss die Runde schon erstellt haben\n" +
+        "- Uebers Internet: Der Host muss Port 7777 (UDP)\n" +
+        "    freigegeben haben (die Anleitung hat er im Spiel)\n" +
+        "- Notloesung: Alle installieren das kostenlose\n" +
+        "    'Tailscale' - dann geht es wie im gleichen WLAN.";
+}
+
+/// <summary>
 /// Komplette FARBMIMIK-UI, wird zur Laufzeit selbst aufgebaut:
 /// - Hauptmenue: "Server starten" / "Code eingeben"
 /// - Beitreten: IP + Room-Code eingeben
@@ -18,7 +80,8 @@ using UnityEngine.UI;
 public class LobbyUI : MonoBehaviour
 {
     Font schrift;
-    GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel;
+    GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
+    Text hilfeInhaltText;
     InputField ipFeld, codeFeld;
     Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText;
     GameObject startButton, nochmalButton, kopierButton;
@@ -55,7 +118,7 @@ public class LobbyUI : MonoBehaviour
             ? GamePhaseManager.Instance.phase
             : SpielPhase.Lobby;
 
-        hauptPanel.SetActive(!verbunden && !beitretenPanel.activeSelf);
+        hauptPanel.SetActive(!verbunden && !beitretenPanel.activeSelf && !hilfePanel.activeSelf);
         if (verbunden && beitretenPanel.activeSelf)
             beitretenPanel.SetActive(false);
 
@@ -179,16 +242,18 @@ public class LobbyUI : MonoBehaviour
         Knopf(hauptPanel.transform, "Runde erstellen", new Vector2(0, 35), () =>
         {
             NetworkManager.singleton.StartHost();
+            ZeigeHilfe(NetzwerkHilfe.HostAnleitung);   // zeigt sofort, was der Host machen muss
         });
         Knopf(hauptPanel.transform, "Runde beitreten", new Vector2(0, -35), () =>
         {
             hauptPanel.SetActive(false);
             beitretenPanel.SetActive(true);
+            ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung);   // zeigt sofort, was der Beitretende machen muss
         });
 
         // ---------- Beitreten ----------
-        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 380);
-        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 140), 30, Neon);
+        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 440);
+        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 170), 30, Neon);
         Text(beitretenPanel.transform, "IP des Hosts:", new Vector2(0, 100), 18, Color.white);
         ipFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, 65), "z.B. 192.168.1.20");
         Text(beitretenPanel.transform, "Room-Code:", new Vector2(0, 25), 18, Color.white);
@@ -201,7 +266,10 @@ public class LobbyUI : MonoBehaviour
             NetworkManager.singleton.networkAddress = ip;
             NetworkManager.singleton.StartClient();
         });
-        Knopf(beitretenPanel.transform, "Zurueck", new Vector2(0, -140), () =>
+        var beitretenHilfe = Knopf(beitretenPanel.transform, "Hilfe: Was muss ich machen?",
+            new Vector2(0, -130), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
+        beitretenHilfe.GetComponentInChildren<Text>().color = new Color(1f, 0.7f, 0.2f);
+        Knopf(beitretenPanel.transform, "Zurueck", new Vector2(0, -190), () =>
         {
             beitretenPanel.SetActive(false);
             hauptPanel.SetActive(true);
@@ -226,9 +294,11 @@ public class LobbyUI : MonoBehaviour
         spielerListeText.alignment = TextAnchor.UpperCenter;
         spielerListeText.rectTransform.sizeDelta = new Vector2(460, 180);
 
-        var portHinweis = Text(lobbyPanel.transform, "", new Vector2(0, -160), 16, new Color(1f, 0.7f, 0.2f));
-        portHinweis.text = "Für Freunde im Internet: Port 7777 (UDP)\nim Router freigeben!";
-        portHinweis.rectTransform.sizeDelta = new Vector2(480, 50);
+        var portKnopf = Knopf(lobbyPanel.transform, "Anleitung: So laden Freunde ein (Host)",
+            new Vector2(0, -160), () => ZeigeHilfe(NetzwerkHilfe.HostAnleitung));
+        var portKnopfText = portKnopf.GetComponentInChildren<Text>();
+        portKnopfText.color = new Color(1f, 0.7f, 0.2f);
+        portKnopfText.fontSize = 16;
 
         startButton = Knopf(lobbyPanel.transform, "SPIEL STARTEN (nur Host)", new Vector2(0, -215), () =>
         {
@@ -262,6 +332,20 @@ public class LobbyUI : MonoBehaviour
         }).gameObject;
         Knopf(endePanel.transform, "Verlassen", new Vector2(0, -70), TrenneVerbindung);
         endePanel.SetActive(false);
+
+        // ---------- Hilfe (im Spiel eingebaute Anleitung, Text je nach Rolle) ----------
+        hilfePanel = Panel(canvas.transform, "HilfePanel", 620, 680);
+        hilfeInhaltText = Text(hilfePanel.transform, "", new Vector2(0, 20), 17, Color.white);
+        hilfeInhaltText.alignment = TextAnchor.UpperCenter;
+        hilfeInhaltText.rectTransform.sizeDelta = new Vector2(580, 580);
+        Knopf(hilfePanel.transform, "Zurueck", new Vector2(0, -300), () => hilfePanel.SetActive(false));
+        hilfePanel.SetActive(false);
+    }
+
+    void ZeigeHilfe(string inhalt)
+    {
+        hilfeInhaltText.text = inhalt;
+        hilfePanel.SetActive(true);
     }
 
     void TrenneVerbindung()

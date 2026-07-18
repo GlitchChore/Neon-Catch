@@ -54,6 +54,9 @@ namespace NeonCatch
         GUIStyle knopfStil, textStil, herzStil, steuerungStil;
         bool zeigeSteuerung;
         bool zeigeOnlineBeitritt;
+        bool zeigeHilfe;
+        string hilfeInhalt = "";
+        bool hilfeZurueckZuBeitritt;
         string onlineIp = "";
         string onlineCode = "";
 
@@ -326,9 +329,46 @@ namespace NeonCatch
                 zeigeOnlineBeitritt = false;
                 KampfOnline.Trete(onlineIp, onlineCode);
             }
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.72f, sw * 0.22f, sh * 0.05f),
+                    "HILFE: WAS MUSS ICH MACHEN?", knopfStil))
+            {
+                hilfeInhalt = NetzwerkHilfe.BeitretenAnleitung;
+                hilfeZurueckZuBeitritt = true;
+                zeigeOnlineBeitritt = false;
+                zeigeHilfe = true;
+            }
+
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
             if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.64f, sw * 0.22f, sh * 0.06f),
                     "ZURÜCK", knopfStil))
                 zeigeOnlineBeitritt = false;
+        }
+
+        // Eingebaute Online-Hilfe: gleiche Texte wie in der FARBMIMIK-Lobby
+        // (NetzwerkHilfe.HostAnleitung bzw. .BeitretenAnleitung, je nachdem
+        // woher die Hilfe geoeffnet wurde)
+        void ZeichneHilfe(float sw, float sh)
+        {
+            if (steuerungStil == null)
+                steuerungStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft };
+            steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.021f);
+            steuerungStil.normal.textColor = Color.white;
+
+            GUI.Label(new Rect(sw * 0.5f - sw * 0.28f, sh * 0.04f, sw * 0.56f, sh * 0.76f),
+                       hilfeInhalt, steuerungStil);
+
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.84f, sw * 0.22f, sh * 0.07f),
+                    "ZURÜCK", knopfStil))
+            {
+                zeigeHilfe = false;
+                if (hilfeZurueckZuBeitritt)
+                {
+                    hilfeZurueckZuBeitritt = false;
+                    zeigeOnlineBeitritt = true;
+                }
+            }
         }
 
         // Steuerungs-Übersicht auf schwarzem Grund im Startmenü
@@ -380,6 +420,12 @@ namespace NeonCatch
                     return;
                 }
 
+                if (zeigeHilfe)
+                {
+                    ZeichneHilfe(sw, sh);
+                    return;
+                }
+
                 // START-Knopf (verschwindet, sobald der Kampf läuft)
                 knopfStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.70f, sw * 0.26f, sh * 0.08f),
@@ -395,9 +441,17 @@ namespace NeonCatch
                         "ONLINE BEITRETEN", knopfStil))
                     zeigeOnlineBeitritt = true;
 
-                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.91f, sw * 0.26f, sh * 0.05f),
+                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.91f, sw * 0.125f, sh * 0.05f),
                         "STEUERUNG", knopfStil))
                     zeigeSteuerung = true;
+
+                if (GUI.Button(new Rect(sw * 0.5f + sw * 0.005f, sh * 0.91f, sw * 0.125f, sh * 0.05f),
+                        "HILFE: ONLINE", knopfStil))
+                {
+                    hilfeInhalt = NetzwerkHilfe.HostAnleitung;
+                    hilfeZurueckZuBeitritt = false;
+                    zeigeHilfe = true;
+                }
 
                 // End-Nachricht: ganz oben am Rand, ohne Kästchen
                 if (endText != "")
