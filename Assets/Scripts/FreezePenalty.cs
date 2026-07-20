@@ -60,8 +60,29 @@ public class FreezePenalty : MonoBehaviourPun
 
     void Start()
     {
-        if (photonView.IsMine)
+        if (photonView.IsMine && (paint == null || !paint.istBot))
+        {
             ErzeugeGlowVolume();
+            UebernimmKameraUndSolo();
+        }
+    }
+
+    // In der FARBMIMIK-Szene (Kopie der Hauptszene) laeuft noch die Solo-Figur
+    // mit ihrer eigenen Kamera. Die legen wir schlafen und geben dem eigenen
+    // Spieler eine eigene Verfolgerkamera.
+    void UebernimmKameraUndSolo()
+    {
+        GameObject solo = GameObject.FindGameObjectWithTag("Player");
+        if (solo != null && solo != gameObject)
+            solo.SetActive(false);
+
+        if (Camera.main == null)
+        {
+            var camGO = new GameObject("FarbmimikKamera") { tag = "MainCamera" };
+            camGO.AddComponent<Camera>();
+            if (Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None).Length == 0)
+                camGO.AddComponent<AudioListener>();
+        }
     }
 
     /// <summary>Globales URP-Post-Processing-Volume mit Bloom, damit das Neon-Blinken gluehen kann.</summary>
@@ -160,8 +181,10 @@ public class FreezePenalty : MonoBehaviourPun
 
     void LateUpdate()
     {
-        // einfache Verfolgerkamera fuer den lokalen Spieler
+        // einfache Verfolgerkamera fuer den lokalen Spieler (nicht fuer Bots)
         if (!photonView.IsMine)
+            return;
+        if (paint != null && paint.istBot)
             return;
         var kamera = Camera.main;
         if (kamera == null)

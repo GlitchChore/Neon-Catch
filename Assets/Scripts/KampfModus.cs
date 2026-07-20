@@ -1,6 +1,7 @@
 using Photon.Pun;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -26,9 +27,19 @@ namespace NeonCatch
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoStart()
         {
-            // In der FARBMIMIK-Szene (erkennbar an der LobbyUI) NICHT starten -
-            // das schwarze Startmenue wuerde dort das komplette Spiel verdecken
+            // Bei JEDEM Szenenwechsel pruefen (nicht nur beim ersten Laden),
+            // damit NEON BLASTER nach der Rueckkehr aus FARBMIMIK wieder da ist
+            SceneManager.sceneLoaded += (scene, modus) => Versuche(scene);
+            Versuche(SceneManager.GetActiveScene());
+        }
+
+        static void Versuche(Scene scene)
+        {
+            // In der FARBMIMIK-Szene NICHT starten - das schwarze Startmenue
+            // wuerde dort das komplette Spiel verdecken
+            if (scene.name == "Farbmimik") return;
             if (Object.FindAnyObjectByType<LobbyUI>() != null) return;
+            if (Object.FindAnyObjectByType<KampfModus>() != null) return;
 
             var go = new GameObject("Kampf_Modus");
             go.AddComponent<KampfModus>();

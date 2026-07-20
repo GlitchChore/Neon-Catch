@@ -1,6 +1,7 @@
 using System.Linq;
 using Photon.Pun;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
@@ -71,6 +72,23 @@ public static class NetzwerkHilfe
 /// </summary>
 public class LobbyUI : MonoBehaviour
 {
+    // Erzeugt die FARBMIMIK-UI automatisch, sobald die "Farbmimik"-Szene
+    // geladen ist (beim Start UND bei jedem Szenenwechsel) - so muss die
+    // Szene selbst kein UI-Objekt enthalten.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void Bootstrap()
+    {
+        SceneManager.sceneLoaded += (scene, modus) => ErzeugeWennFarbmimik(scene);
+        ErzeugeWennFarbmimik(SceneManager.GetActiveScene());
+    }
+
+    static void ErzeugeWennFarbmimik(Scene scene)
+    {
+        if (scene.name != "Farbmimik") return;
+        if (FindAnyObjectByType<LobbyUI>() != null) return;
+        new GameObject("FarbmimikUI").AddComponent<LobbyUI>();
+    }
+
     Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
     Text hilfeInhaltText, beitretenStatusText;
