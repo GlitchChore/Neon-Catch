@@ -321,6 +321,9 @@ public class LobbyUI : MonoBehaviour
         var scaler = canvasGO.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1280, 720);
+        // Schrift SCHAERFER: dynamische Fonts in 3-facher Aufloesung rastern,
+        // damit die Schrift beim Hochskalieren nicht verschwimmt
+        scaler.dynamicPixelsPerUnit = 3f;
         canvasGO.AddComponent<GraphicRaycaster>();
 
         // Menue-Hintergrundbild (Assets/Resources/MenueHintergrund) - wird als
@@ -519,6 +522,35 @@ public class LobbyUI : MonoBehaviour
         Text(verbindePanel.transform, "Verbinde mit dem Server ...", new Vector2(0, 20), 24, Neon);
         Text(verbindePanel.transform, "einen Moment bitte", new Vector2(0, -25), 16, Color.white);
         verbindePanel.SetActive(false);
+
+        // ---------- Immer sichtbarer Zurueck-Button oben links ----------
+        var zurueck = Knopf(canvas.transform, "< Zurück", Vector2.zero, GlobalerZurueck);
+        var zr = zurueck.GetComponent<Image>().rectTransform;
+        zr.anchorMin = zr.anchorMax = zr.pivot = new Vector2(0f, 1f);   // oben links
+        zr.anchoredPosition = new Vector2(100f, -34f);
+        zr.sizeDelta = new Vector2(170f, 46f);
+        zurueck.transform.SetAsLastSibling();   // ueber allem anderen
+    }
+
+    // Kontext-abhaengiges "Zurueck": schliesst Hilfe, geht von Beitreten
+    // zurueck ins Hauptmenue, verlaesst einen Raum, oder wechselt vom
+    // Hauptmenue zurueck zu NEON BLASTER.
+    void GlobalerZurueck()
+    {
+        if (hilfePanel.activeSelf) { hilfePanel.SetActive(false); return; }
+        if (beitretenPanel.activeSelf)
+        {
+            beitretenPanel.SetActive(false);
+            beitretenStatusText.text = "";
+            hauptPanel.SetActive(true);
+            return;
+        }
+        if (PhotonNetwork.InRoom) { TrenneVerbindung(); return; }   // Lobby/Ende -> Raum verlassen
+
+        // Hauptmenue: zurueck in die NEON-BLASTER-Szene
+        string ziel = PlayerPrefs.GetString("NeonCatch_HauptSzene", "SampleScene");
+        if (Application.CanStreamedLevelBeLoaded(ziel))
+            SceneManager.LoadScene(ziel);
     }
 
     void ZeigeHilfe(string inhalt)
@@ -559,11 +591,11 @@ public class LobbyUI : MonoBehaviour
         text.rectTransform.anchoredPosition = position;
         text.rectTransform.sizeDelta = new Vector2(400, 40);
 
-        // Kraeftiger dunkler Umriss: Schrift bleibt auf JEDEM Hintergrund
-        // scharf lesbar (auch wenn ein Button beim Drueberfahren hell wird)
+        // Dunkler Umriss (duenn = scharf): Schrift bleibt auf JEDEM Hintergrund
+        // lesbar (auch wenn ein Button beim Drueberfahren hell wird)
         var outline = go.AddComponent<Outline>();
-        outline.effectColor = new Color(0f, 0f, 0f, 0.95f);
-        outline.effectDistance = new Vector2(2f, -2f);
+        outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
+        outline.effectDistance = new Vector2(1f, -1f);
         return text;
     }
 
