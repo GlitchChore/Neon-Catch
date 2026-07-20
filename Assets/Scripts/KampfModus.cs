@@ -968,12 +968,27 @@ namespace NeonCatch
             Vector3 normal = -richtung;
             Transform getroffen = null;
 
-            if (Physics.Raycast(start, richtung, out RaycastHit hit, reichweite,
-                    ~(1 << 4), QueryTriggerInteraction.Ignore))
+            // Naechsten Treffer suchen, der NICHT der eigene Koerper ist -
+            // sonst blockt der eigene CharacterController den Schuss
+            RaycastHit[] alleTreffer = Physics.RaycastAll(start, richtung, reichweite,
+                ~(1 << 4), QueryTriggerInteraction.Ignore);
+            float naechste = float.MaxValue;
+            RaycastHit bester = default;
+            bool gefunden = false;
+            foreach (RaycastHit h in alleTreffer)
             {
-                ende = hit.point;
-                normal = hit.normal;
-                KampfBot bot = hit.collider.GetComponentInParent<KampfBot>();
+                if (h.collider.transform.IsChildOf(transform)) continue;   // eigener Koerper
+                if (h.distance >= naechste) continue;
+                naechste = h.distance;
+                bester = h;
+                gefunden = true;
+            }
+
+            if (gefunden)
+            {
+                ende = bester.point;
+                normal = bester.normal;
+                KampfBot bot = bester.collider.GetComponentInParent<KampfBot>();
                 if (bot != null)
                 {
                     getroffen = bot.transform;
@@ -981,7 +996,7 @@ namespace NeonCatch
                 }
                 else
                 {
-                    AnimalLagFix tier = hit.collider.GetComponentInParent<AnimalLagFix>();
+                    AnimalLagFix tier = bester.collider.GetComponentInParent<AnimalLagFix>();
                     if (tier != null) getroffen = tier.transform;
                 }
             }
@@ -1007,6 +1022,7 @@ namespace NeonCatch
         CharacterController cc;
         BotAnimation anim;
         WeltHerzen herzen;
+        BlitzUmkreisung blitzEffekt;
         float naechsterSchuss;
         Vector3 wanderRichtung;
         float richtungsWechsel;
@@ -1243,8 +1259,23 @@ namespace NeonCatch
             Vector3 ende = start + richtung * sichtweite;
             Vector3 normal = -richtung;
             Transform getroffen = null;
-            if (Physics.Raycast(start, richtung, out RaycastHit hit, sichtweite,
-                    ~(1 << 4), QueryTriggerInteraction.Ignore))
+
+            // Naechsten Treffer suchen, der nicht der eigene Koerper ist
+            RaycastHit[] alleTreffer = Physics.RaycastAll(start, richtung, sichtweite,
+                ~(1 << 4), QueryTriggerInteraction.Ignore);
+            float naechsteDistanz = float.MaxValue;
+            RaycastHit hit = default;
+            bool getroffenEtwas = false;
+            foreach (RaycastHit h in alleTreffer)
+            {
+                if (h.collider.transform.IsChildOf(transform)) continue;
+                if (h.distance >= naechsteDistanz) continue;
+                naechsteDistanz = h.distance;
+                hit = h;
+                getroffenEtwas = true;
+            }
+
+            if (getroffenEtwas)
             {
                 ende = hit.point;
                 normal = hit.normal;
@@ -1288,6 +1319,10 @@ namespace NeonCatch
             SetzeFarbe(true);
             if (herzen != null) herzen.SetzeLeben(leben);
 
+            // Letztes Leben: Blitze kreisen um den Bot - wie beim Spieler
+            if (leben == 1 && blitzEffekt == null)
+                blitzEffekt = BlitzUmkreisung.Erzeuge(transform);
+
             if (leben <= 0)
             {
                 StirbMitAnimation();
@@ -1305,6 +1340,7 @@ namespace NeonCatch
         {
             stirbt = true;
             SetzeFarbe(false);
+            if (blitzEffekt != null) { Destroy(blitzEffekt.gameObject); blitzEffekt = null; }
             KampfModus.Instanz.BotEliminiert(this);
 
             if (cc != null) cc.enabled = false;
@@ -1482,45 +1518,68 @@ namespace NeonCatch
     }
 
     // ======================================================================
-    // Herzen-Anzeige auf Brust UND Rücken einer Figur (Welt-Raum, fest an
-    // der Figur ausgerichtet – KEIN Kamera-Billboard mehr, man soll die
-    // Herzen von vorne UND von hinten ablesen können). Für den Spieler
-    // selbst unsichtbar (Ego-Perspektive) – dafür gibt es zusätzlich die
-    // HUD-Herzen in KampfModus.OnGUI().
+    // Herzen-Anzeige an einer Figur: IMMER sichtbar und IMMER zum Betrachter
+    // gedreht (Billboard). Die Herzen schweben leicht VOR dem Körper - je
+    // nachdem, von wo man die Figur anschaut, also vor Bauch, Rücken oder
+    // Seite. Für den Spieler selbst unsichtbar (Ego-Perspektive) - dafür
+    // gibt es zusätzlich die HUD-Herzen in KampfModus.OnGUI().
     // ======================================================================
     public class WeltHerzen : MonoBehaviour
     {
         public int maxLeben = 3;
         int aktuelleLeben;
-        TextMesh textVorne, textHinten;
+        TextMesh text;
+        Transform anzeige;
+        float herzHoehe = 0.45f;
+        float abstandVor = 0.25f;
 
         void Awake()
         {
             aktuelleLeben = maxLeben;
 
-            // Brusthöhe (nicht über dem Kopf – dort schweben jetzt ggf. die
-            // Todes-Sterne). Vorne von einem Betrachter VOR der Figur lesbar,
-            // hinten entsprechend von HINTER der Figur.
-            textVorne  = BaueText(Vector3.forward * 0.02f, Quaternion.Euler(0f, 180f, 0f));
-            textHinten = BaueText(Vector3.back * 0.02f, Quaternion.identity);
+            // Figurgröße messen -> Herzen auf Brusthöhe, Schrift passend groß.
+            // Die Anzeige wird NICHT an die Figur geparentet, damit skalierte
+            // Figuren die Schrift nicht verzerren - sie folgt in LateUpdate().
+            float figurHoehe = 0f;
+            foreach (Renderer r in GetComponentsInChildren<Renderer>())
+                figurHoehe = Mathf.Max(figurHoehe, r.bounds.max.y - transform.position.y);
+            if (figurHoehe < 0.2f) figurHoehe = 0.8f;
+            herzHoehe = figurHoehe * 0.6f;
+            abstandVor = Mathf.Max(0.18f, figurHoehe * 0.3f);
+
+            var go = new GameObject("Herzen_Anzeige");
+            anzeige = go.transform;
+            text = go.AddComponent<TextMesh>();
+            text.color = new Color(0.95f, 0.15f, 0.15f);   // rot
+            text.fontSize = 96;
+            text.characterSize = 0.014f * Mathf.Max(0.5f, figurHoehe / 0.75f);
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
 
             AktualisiereText();
         }
 
-        TextMesh BaueText(Vector3 lokalerVersatz, Quaternion lokaleRotation)
+        void LateUpdate()
         {
-            var go = new GameObject("Herzen_Anzeige");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = Vector3.up * 0.42f + lokalerVersatz;   // Brusthöhe
-            go.transform.localRotation = lokaleRotation;
+            if (anzeige == null) return;
+            Camera kamera = Camera.main;
+            if (kamera == null) return;
 
-            var text = go.AddComponent<TextMesh>();
-            text.color = new Color(0.95f, 0.15f, 0.15f);   // rot
-            text.fontSize = 96;
-            text.characterSize = 0.012f;
-            text.anchor = TextAnchor.MiddleCenter;
-            text.alignment = TextAlignment.Center;
-            return text;
+            Vector3 zurKamera = kamera.transform.position - transform.position;
+            zurKamera.y = 0f;
+            zurKamera = zurKamera.sqrMagnitude > 0.001f
+                ? zurKamera.normalized
+                : -kamera.transform.forward;
+
+            // leicht VOR dem Körper in Richtung Betrachter, immer lesbar gedreht
+            anzeige.position = transform.position + Vector3.up * herzHoehe + zurKamera * abstandVor;
+            anzeige.rotation = kamera.transform.rotation;
+        }
+
+        void OnDestroy()
+        {
+            if (anzeige != null)
+                Destroy(anzeige.gameObject);
         }
 
         public void SetzeLeben(int leben)
@@ -1531,10 +1590,10 @@ namespace NeonCatch
 
         void AktualisiereText()
         {
+            if (text == null) return;
             string s = "";
             for (int i = 0; i < maxLeben; i++) s += i < aktuelleLeben ? "♥" : "♡";
-            if (textVorne != null) textVorne.text = s;
-            if (textHinten != null) textHinten.text = s;
+            text.text = s;
         }
     }
 

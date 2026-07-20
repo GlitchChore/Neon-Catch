@@ -241,6 +241,7 @@ namespace NeonCatch
         GameObject visual;
         BotAnimation visualAnim;
         WeltHerzen herzen;
+        BlitzUmkreisung blitzEffekt;
         Camera eigeneKamera;
         GUIStyle hudStil;
         float yaw, pitch, vertikal;
@@ -289,12 +290,6 @@ namespace NeonCatch
                 herzen = gameObject.AddComponent<WeltHerzen>();
                 herzen.maxLeben = maxLeben;
                 herzen.SetzeLeben(leben);
-
-                // Herzen sitzen fuer 0.75-m-Bots richtig - bei 1.55-m-Menschen hochschieben
-                if (!istBot)
-                    foreach (Transform kind in transform)
-                        if (kind.name == "Herzen_Anzeige")
-                            kind.localPosition = new Vector3(kind.localPosition.x, 1.35f, kind.localPosition.z);
             }
         }
 
@@ -511,19 +506,31 @@ namespace NeonCatch
         {
             Vector3 ende = start + richtung * reichweite;
             Vector3 normal = -richtung;
+            KampfNetzwerk getroffener = null;
             uint getroffenId = 0;
 
-            if (Physics.Raycast(start, richtung, out RaycastHit hit, reichweite,
-                    ~(1 << 4), QueryTriggerInteraction.Ignore))
+            // ALLE Treffer entlang des Strahls holen und den NAECHSTEN nehmen,
+            // der nicht der Schuetze selbst ist - sonst blockt der eigene
+            // CharacterController den Schuss direkt vor der Kamera
+            RaycastHit[] alleTreffer = Physics.RaycastAll(start, richtung, reichweite,
+                ~(1 << 4), QueryTriggerInteraction.Ignore);
+            float naechste = float.MaxValue;
+            foreach (var hit in alleTreffer)
             {
+                var wer = hit.collider.GetComponentInParent<KampfNetzwerk>();
+                if (wer == this) continue;   // eigener Koerper
+                if (hit.distance >= naechste) continue;
+
+                naechste = hit.distance;
                 ende = hit.point;
                 normal = hit.normal;
-                var ziel = hit.collider.GetComponentInParent<KampfNetzwerk>();
-                if (ziel != null && ziel != this && !ziel.tot)
-                {
-                    getroffenId = ziel.netId;
-                    ziel.NimmSchaden();
-                }
+                getroffener = (wer != null && !wer.tot) ? wer : null;
+            }
+
+            if (getroffener != null)
+            {
+                getroffenId = getroffener.netId;
+                getroffener.NimmSchaden();
             }
             RpcSchussEffekt(start, ende, normal, getroffenId);
         }
@@ -562,6 +569,18 @@ namespace NeonCatch
         void BeiLebenAenderung(int alt, int neu)
         {
             if (herzen != null) herzen.SetzeLeben(neu);
+
+            // Letztes Leben: Blitze kreisen um die Figur - genau wie beim
+            // Solo-Spieler, fuer ALLE sichtbar (auch bei Bots)
+            if (neu == 1 && !tot && blitzEffekt == null)
+            {
+                blitzEffekt = BlitzUmkreisung.Erzeuge(transform);
+            }
+            else if (neu != 1 && blitzEffekt != null)
+            {
+                Destroy(blitzEffekt.gameObject);
+                blitzEffekt = null;
+            }
         }
 
         void BeiTod(bool alt, bool neu)
@@ -578,6 +597,7 @@ namespace NeonCatch
             if (visualAnim != null) visualAnim.SpieleTod();
             else if (visual != null) visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
             if (herzen != null) herzen.SetzeLeben(0);
+            if (blitzEffekt != null) { Destroy(blitzEffekt.gameObject); blitzEffekt = null; }
 
             if (isLocalPlayer)
             {
