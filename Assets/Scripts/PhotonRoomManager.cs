@@ -1,0 +1,192 @@
+using System.Collections;
+using Photon.Pun;
+using Photon.Realtime;
+using UnityEngine;
+using Hashtable = ExitGames.Client.Photon.Hashtable;
+
+/// <summary>
+/// Ersetzt Mirror komplett: verbindet mit Photon (Cloud-Server, keine
+/// Portfreigabe/Fritzbox noetig), erstellt/betritt Raeume ueber einen
+/// 4-stelligen Code (= der Photon-Raumname) und spawnt danach das passende
+/// Spieler-Prefab. Gemeinsam genutzt von FARBMIMIK und NEON BLASTER -
+/// unterschieden ueber den "modus"-Namen und das Prefab, das beim Aufruf
+/// mitgegeben wird.
+///
+/// Einrichtung: EIN GameObject "PhotonManager" in JEDER Netzwerk-Szene
+/// (FARBMIMIK und die Kampf-Szene), dieses Script drauf. Ueberlebt
+/// Szenenwechsel selbst (DontDestroyOnLoad) - kommt also nur einmal vor,
+/// auch wenn beide Szenen es referenzieren.
+/// </summary>
+public class PhotonRoomManager : MonoBehaviourPunCallbacks
+{
+    public static PhotonRoomManager Instanz { get; private set; }
+
+    /// <summary>Aktueller Raum-Code (= Photon-Raumname).</summary>
+    public static string RoomCode { get; private set; } = "";
+
+    /// <summary>Letzter Fehler (z.B. "Das ist nicht korrekt!") - leer = kein Fehler.</summary>
+    public static string FehlerText { get; private set; } = "";
+
+    string wartetAufModus;
+    string wartetAufPrefab;
+    int wartetAufMaxSpieler;
+    int hostVersuche;
+
+    // Erzeugt sich beim Spielstart automatisch, egal in welcher Szene -
+    // so muss niemand ein "PhotonManager"-Objekt von Hand in die Szene legen.
+    // Dank DontDestroyOnLoad ueberlebt es den Wechsel FARBMIMIK <-> NEON BLASTER.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void Bootstrap()
+    {
+        if (Instanz == null && FindAnyObjectByType<PhotonRoomManager>() == null)
+        {
+            var go = new GameObject("PhotonManager");
+            go.AddComponent<PhotonRoomManager>();
+        }
+    }
+
+    void Awake()
+    {
+        if (Instanz != null && Instanz != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instanz = this;
+        DontDestroyOnLoad(gameObject);
+
+        // Wir wechseln Szenen selbst (FARBMIMIK <-> NEON BLASTER) - Photon
+        // soll das nicht automatisch fuer alle Mitspieler mit erzwingen
+        PhotonNetwork.AutomaticallySyncScene = false;
+
+        if (!PhotonNetwork.IsConnected)
+            PhotonNetwork.ConnectUsingSettings();
+    }
+
+    /// <summary>Neuen Raum erstellen und automatisch einen freien 4-stelligen Code finden.</summary>
+    public void ErstelleRaum(string modus, string prefabName, int maxSpieler)
+    {
+        FehlerText = "";
+        wartetAufModus = modus;
+        wartetAufPrefab = prefabName;
+        wartetAufMaxSpieler = maxSpieler;
+        hostVersuche = 0;
+        StartCoroutine(WartetAufVerbindungDann(HosteJetzt));
+    }
+
+    /// <summary>Bestehendem Raum per Code beitreten.</summary>
+    public void TretRaumBei(string code, string modus, string prefabName)
+    {
+        FehlerText = "";
+        RoomCode = (code ?? "").Trim().ToUpper();
+        wartetAufModus = modus;
+        wartetAufPrefab = prefabName;
+
+        if (RoomCode.Length == 0)
+        {
+            FehlerText = "Das ist nicht korrekt! Bitte einen Code eingeben.";
+            return;
+        }
+        StartCoroutine(WartetAufVerbindungDann(() => PhotonNetwork.JoinRoom(RoomCode)));
+    }
+
+    IEnumerator WartetAufVerbindungDann(System.Action aktion)
+    {
+        float timeout = Time.time + 10f;
+        while (!PhotonNetwork.IsConnectedAndReady && Time.time < timeout)
+            yield return null;
+
+        if (!PhotonNetwork.IsConnectedAndReady)
+        {
+            FehlerText = "Keine Verbindung zum Server. Internetverbindung prüfen.";
+            yield break;
+        }
+        aktion();
+    }
+
+    void HosteJetzt()
+    {
+        RoomCode = GeneriereCode();
+        var optionen = new RoomOptions
+        {
+            MaxPlayers = (byte)wartetAufMaxSpieler,
+            CustomRoomProperties = new Hashtable { { "modus", wartetAufModus } },
+            CustomRoomPropertiesForLobby = new[] { "modus" }
+        };
+        PhotonNetwork.CreateRoom(RoomCode, optionen);
+    }
+
+    public override void OnCreateRoomFailed(short returnCode, string message)
+    {
+        hostVersuche++;
+        if (hostVersuche < 5)
+        {
+            HosteJetzt();   // Code war schon vergeben - einfach neuen Code versuchen
+        }
+        else
+        {
+            FehlerText = "Raum konnte nicht erstellt werden: " + message;
+            Debug.LogWarning("PhotonRoomManager: CreateRoom fehlgeschlagen - " + message);
+        }
+    }
+
+    public override void OnJoinRoomFailed(short returnCode, string message)
+    {
+        FehlerText = "Das ist nicht korrekt! IP/Code prüfen und nochmal versuchen.";
+    }
+
+    public override void OnJoinedRoom()
+    {
+        // Falscher Modus? (jemand hat den Code vom jeweils anderen Spiel eingegeben)
+        if (PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("modus", out object modus) &&
+            wartetAufModus != null && (string)modus != wartetAufModus)
+        {
+            FehlerText = "Das ist nicht korrekt! Dieser Code gehört zum anderen Spiel-Modus.";
+            PhotonNetwork.LeaveRoom();
+            return;
+        }
+
+        RoomCode = PhotonNetwork.CurrentRoom.Name;
+        SpielerSpawnen();
+    }
+
+    void SpielerSpawnen()
+    {
+        if (string.IsNullOrEmpty(wartetAufPrefab))
+            return;
+
+        GameObject prefab = Resources.Load<GameObject>(wartetAufPrefab);
+        if (prefab == null)
+        {
+            FehlerText = "Spieler-Prefab '" + wartetAufPrefab + "' fehlt in Resources!";
+            Debug.LogError("PhotonRoomManager: " + FehlerText);
+            return;
+        }
+
+        Vector3 pos = new Vector3(Random.Range(-2f, 2f), 0f, Random.Range(-2f, 2f));
+        PhotonNetwork.Instantiate(wartetAufPrefab, pos, Quaternion.identity);
+    }
+
+    /// <summary>Raum verlassen (Host oder Mitspieler - Photon behandelt beide gleich,
+    /// Photon waehlt bei Bedarf automatisch einen neuen MasterClient).</summary>
+    public void VerlasseRaum()
+    {
+        if (PhotonNetwork.InRoom)
+            PhotonNetwork.LeaveRoom();
+    }
+
+    public override void OnLeftRoom()
+    {
+        RoomCode = "";
+    }
+
+    static string GeneriereCode()
+    {
+        // ohne O/0 und I/1, damit man sich beim Abtippen nicht vertut
+        const string zeichen = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        string code = "";
+        for (int i = 0; i < 4; i++)
+            code += zeichen[Random.Range(0, zeichen.Length)];
+        return code;
+    }
+}

@@ -1,8 +1,9 @@
-using Mirror;
+using Photon.Pun;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using Random = UnityEngine.Random;
 
 namespace NeonCatch
@@ -25,9 +26,9 @@ namespace NeonCatch
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void AutoStart()
         {
-            // In der FARBMIMIK-Szene (erkennbar am LobbyManager) NICHT starten -
+            // In der FARBMIMIK-Szene (erkennbar an der LobbyUI) NICHT starten -
             // das schwarze Startmenue wuerde dort das komplette Spiel verdecken
-            if (Object.FindAnyObjectByType<LobbyManager>() != null) return;
+            if (Object.FindAnyObjectByType<LobbyUI>() != null) return;
 
             var go = new GameObject("Kampf_Modus");
             go.AddComponent<KampfModus>();
@@ -65,9 +66,7 @@ namespace NeonCatch
         bool onlineLiefGerade, onlineWarVerbunden;
         static Texture2D kartenTex;
         GUIStyle kartenStil, kartenTitelStil;
-        string onlineIp = "";
         string onlineCode = "";
-        string onlineFreundName = "";
 
         // Spawn-Position bei der Burg (wie am Anfang) – für den Reset-Knopf
         Vector3 spielerStartPos;
@@ -273,11 +272,10 @@ namespace NeonCatch
         {
             // Waehrend einer Online-Runde uebernimmt KampfNetzwerk komplett -
             // aber ESC funktioniert IMMER als Notausgang zurueck ins Menue
-            if (NetworkClient.active)
+            if (PhotonNetwork.InRoom)
             {
                 onlineLiefGerade = true;
-                if (NetworkClient.isConnected && NetworkClient.localPlayer != null)
-                    onlineWarVerbunden = true;
+                onlineWarVerbunden = true;
 
                 var tastatur = Keyboard.current;
                 if (tastatur != null && tastatur.escapeKey.wasPressedThisFrame)
@@ -289,9 +287,11 @@ namespace NeonCatch
             if (onlineLiefGerade)
             {
                 onlineLiefGerade = false;
-                endText = onlineWarVerbunden
-                    ? "Drücke START für eine neue Runde."
-                    : "Das ist nicht korrekt! IP oder Room-Code prüfen und nochmal versuchen.";
+                // Photon meldet Fehler (z.B. falscher Code) ueber PhotonRoomManager
+                if (!onlineWarVerbunden && PhotonRoomManager.FehlerText != "")
+                    endText = PhotonRoomManager.FehlerText;
+                else
+                    endText = "Drücke START für eine neue Runde.";
                 onlineWarVerbunden = false;
             }
 
@@ -342,67 +342,33 @@ namespace NeonCatch
             "R — Reset, jederzeit\n" +
             "ESC — Aufgeben";
 
-        // Online beitreten: IP + Room-Code eintippen (IMGUI, passend zum Startmenü)
+        // Online beitreten: nur den 4-stelligen Code eintippen (Photon braucht
+        // keine IP). IMGUI, passend zum Startmenü.
         void ZeichneOnlineBeitritt(float sw, float sh)
         {
             if (textStil == null)
                 textStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
-            textStil.alignment = TextAnchor.MiddleLeft;
-            textStil.fontSize = Mathf.RoundToInt(sh * 0.03f);
+            textStil.alignment = TextAnchor.MiddleCenter;
+            textStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
             textStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
 
             float feldBreite = sw * 0.3f;
             float x = sw * 0.5f - feldBreite * 0.5f;
 
-            // Gespeicherte Freunde: Klick auf den Namen fuellt die IP aus
-            var freunde = FreundeListe.Alle();
-            if (freunde.Count > 0)
-            {
-                textStil.alignment = TextAnchor.MiddleCenter;
-                textStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
-                GUI.Label(new Rect(x, sh * 0.12f, feldBreite, sh * 0.04f),
-                          "Mit wem spielen? (Klick = IP wird eingefügt)", textStil);
-                textStil.alignment = TextAnchor.MiddleLeft;
-
-                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.02f);
-                int anzahl = Mathf.Min(freunde.Count, 4);
-                float knopfBreite = sw * 0.075f;
-                for (int i = 0; i < anzahl; i++)
-                {
-                    float kx = sw * 0.5f + (i - (anzahl - 1) * 0.5f) * (knopfBreite + sw * 0.008f) - knopfBreite * 0.5f;
-                    if (GUI.Button(new Rect(kx, sh * 0.165f, knopfBreite, sh * 0.045f), freunde[i][0], knopfStil))
-                    {
-                        onlineIp = freunde[i][1];
-                        onlineFreundName = "";
-                    }
-                }
-            }
-
-            textStil.fontSize = Mathf.RoundToInt(sh * 0.03f);
-            GUI.Label(new Rect(x, sh * 0.23f, feldBreite, sh * 0.05f), "IP des Hosts:", textStil);
-            onlineIp = GUI.TextField(new Rect(x, sh * 0.285f, feldBreite, sh * 0.05f), onlineIp);
-
-            GUI.Label(new Rect(x, sh * 0.35f, feldBreite, sh * 0.05f), "Beitritts-Code:", textStil);
-            onlineCode = GUI.TextField(new Rect(x, sh * 0.405f, feldBreite, sh * 0.05f), onlineCode);
-
-            textStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
-            GUI.Label(new Rect(x, sh * 0.47f, feldBreite, sh * 0.04f),
-                      "Zum Merken - Name des Freundes:", textStil);
-            onlineFreundName = GUI.TextField(new Rect(x, sh * 0.515f, feldBreite, sh * 0.045f), onlineFreundName);
+            GUI.Label(new Rect(x, sh * 0.28f, feldBreite, sh * 0.05f), "Beitritts-Code eingeben:", textStil);
+            var feldStil = new GUIStyle(GUI.skin.textField)
+            { fontSize = Mathf.RoundToInt(sh * 0.04f), alignment = TextAnchor.MiddleCenter };
+            onlineCode = GUI.TextField(new Rect(x, sh * 0.34f, feldBreite, sh * 0.06f), onlineCode, feldStil);
 
             knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.585f, sw * 0.22f, sh * 0.07f),
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.44f, sw * 0.22f, sh * 0.07f),
                     "VERBINDEN", knopfStil))
             {
-                // Freund merken: beim naechsten Mal reicht ein Klick auf den Namen
-                if (onlineFreundName.Trim() != "")
-                    FreundeListe.Speichere(onlineFreundName, onlineIp);
-
                 zeigeOnlineBeitritt = false;
-                KampfOnline.Trete(onlineIp, onlineCode);
+                KampfOnline.Trete(onlineCode);
             }
             knopfStil.fontSize = Mathf.RoundToInt(sh * 0.028f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.755f, sw * 0.22f, sh * 0.05f),
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.60f, sw * 0.22f, sh * 0.05f),
                     "HILFE", knopfStil))
             {
                 hilfeInhalt = NetzwerkHilfe.BeitretenAnleitung;
@@ -412,7 +378,7 @@ namespace NeonCatch
             }
 
             knopfStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.675f, sw * 0.22f, sh * 0.06f),
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.52f, sw * 0.22f, sh * 0.06f),
                     "ZURÜCK", knopfStil))
                 zeigeOnlineBeitritt = false;
         }
@@ -555,9 +521,11 @@ namespace NeonCatch
             // Online-HUD zeichnet KampfNetzwerk - aber solange KEIN eigener
             // Netzwerk-Spieler existiert (z.B. Verbindung klappt nicht),
             // gibt es hier einen sichtbaren Abbrechen-Knopf als Notausgang
-            if (NetworkClient.active)
+            if (PhotonNetwork.InRoom)
             {
-                if (NetworkClient.localPlayer == null)
+                bool eigenerDa = FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None)
+                    .Any(k => k.photonView.IsMine && !k.istBot);
+                if (!eigenerDa)
                 {
                     if (knopfStil == null)
                         knopfStil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, wordWrap = true };

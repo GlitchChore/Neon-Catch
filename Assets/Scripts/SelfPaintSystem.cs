@@ -1,4 +1,4 @@
-using Mirror;
+using Photon.Pun;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
@@ -6,27 +6,34 @@ using UnityEngine.UI;
 /// <summary>
 /// PHASE 1 (Malen): Taste E oeffnet die Farb-UI (animiert mit LeanTween).
 /// Auf dem Farbverlauf mit gedrueckter Maustaste wischen -> Farbe mischt sich.
-/// Nach 3 Wischen wird die Farbe fest gesetzt und per Mirror gesynct.
-/// Gehoert auf das Spieler-Prefab (zusammen mit NetworkIdentity).
+/// Nach 3 Wischen wird die Farbe fest gesetzt und per Photon-RPC an alle verteilt.
+/// Gehoert auf das Spieler-Prefab (zusammen mit PhotonView + PhotonTransformView).
+///
+/// Laeuft fuer ECHTE Spieler UND fuer Bots (die GamePhaseManager als
+/// Raum-Objekt erzeugt und per RpcSetzeBotDaten einmalig befuellt) - Bots
+/// erkennt man am Feld istBot, sie bekommen nie eigene Eingaben.
 /// </summary>
-public class SelfPaintSystem : NetworkBehaviour
+[RequireComponent(typeof(PhotonView))]
+public class SelfPaintSystem : MonoBehaviourPun
 {
-    [SyncVar]
-    public int spielerNummer = -1;
-
-    [SyncVar]
     public string spielerName = "";
-
-    [SyncVar(hook = nameof(BeiFarbwechsel))]
     public Color spielerFarbe = Color.white;
-
-    [SyncVar]
     public bool farbeGesetzt;
+
+    /// <summary>Server-gesteuerter Fuell-Bot statt echter Spieler.</summary>
+    public bool istBot;
+
+    /// <summary>Vom Sucher gefunden? Bestimmt zusammen mit platz die Endplatzierung.</summary>
+    public bool gefunden;
+
+    /// <summary>Endplatzierung dieser Runde (0 = noch nicht ausgewertet, 1 = bester Platz).</summary>
+    public int platz;
 
     const int WischeNoetig = 3;
     const float MindestWischWeite = 60f;   // Pixel
 
     Renderer[] eigeneRenderer;
+    Color botFarbeAusDaten;
 
     // UI (existiert nur beim lokalen Spieler)
     GameObject farbPanel;
@@ -42,49 +49,77 @@ public class SelfPaintSystem : NetworkBehaviour
     void Awake()
     {
         eigeneRenderer = GetComponentsInChildren<Renderer>();
+
+        // Bot-Daten (Name + Farbe) werden beim Erzeugen als Instantiation-
+        // Data mitgegeben - die sind SOFORT verfuegbar (anders als RPCs, die
+        // erst 1 Frame spaeter ankommen und in der Zwischenzeit faelschlich
+        // "kein Bot" zeigen wuerden).
+        object[] daten = photonView.InstantiationData;
+        if (daten != null && daten.Length >= 4)
+        {
+            istBot = true;
+            spielerName = (string)daten[0];
+            farbeGesetzt = true;
+            botFarbeAusDaten = new Color((float)daten[1], (float)daten[2], (float)daten[3]);
+        }
     }
 
-    public override void OnStartServer()
+    void Start()
     {
-        // erste freie Spielernummer 1-7 vergeben
-        bool[] belegt = new bool[8];
-        foreach (var s in FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None))
-            if (s != this && s.spielerNummer >= 1 && s.spielerNummer <= 7)
-                belegt[s.spielerNummer] = true;
-        for (int i = 1; i <= 7; i++)
-            if (!belegt[i]) { spielerNummer = i; break; }
+        if (istBot)
+        {
+            SetzeSichtbareFarbe(botFarbeAusDaten);
+            return;
+        }
+
+        // Eigenen Namen einmalig verteilen (AllBuffered: auch spaeter
+        // beitretende Clients bekommen den Namen automatisch nachgeliefert)
+        if (photonView.IsMine)
+            photonView.RPC(nameof(RpcSetzeName), RpcTarget.AllBuffered, SpielerProfil.Name);
     }
 
-    public override void OnStartLocalPlayer()
-    {
-        CmdSetzeName(SpielerProfil.Name);
-    }
-
-    [Command]
-    void CmdSetzeName(string name)
+    [PunRPC]
+    void RpcSetzeName(string name)
     {
         name = (name ?? "").Trim();
         if (name.Length > 14) name = name.Substring(0, 14);
         spielerName = name;
     }
 
-    void BeiFarbwechsel(Color alt, Color neu)
+    void SetzeSichtbareFarbe(Color neu)
     {
+        spielerFarbe = neu;
         foreach (var r in eigeneRenderer)
             foreach (var m in r.materials)
                 m.color = neu;
     }
 
-    [Server]
-    public void ResetFuerLobby()
+    /// <summary>Vom MasterClient aufgerufen, wenn eine neue Runde in der Lobby beginnt.</summary>
+    [PunRPC]
+    public void RpcResetFuerLobby()
     {
         farbeGesetzt = false;
-        spielerFarbe = Color.white;
+        SetzeSichtbareFarbe(Color.white);
+        gefunden = false;
+        platz = 0;
+    }
+
+    /// <summary>Vom Sucher/MasterClient aufgerufen, wenn dieser Spieler gefunden wurde.</summary>
+    [PunRPC]
+    public void RpcSetzeGefunden()
+    {
+        gefunden = true;
+    }
+
+    [PunRPC]
+    public void RpcSetzePlatz(int neuerPlatz)
+    {
+        platz = neuerPlatz;
     }
 
     void Update()
     {
-        if (!isLocalPlayer)
+        if (!photonView.IsMine || istBot)
             return;
 
         SpielPhase phase = GamePhaseManager.Instance != null
@@ -141,7 +176,11 @@ public class SelfPaintSystem : NetworkBehaviour
 
             if (wische >= WischeNoetig)
             {
-                CmdSetzeFarbe(Color.HSVToRGB(hue, 0.9f, 1f));
+                if (GamePhaseManager.Instance != null &&
+                    GamePhaseManager.Instance.phase == SpielPhase.Malen && !farbeGesetzt)
+                {
+                    photonView.RPC(nameof(RpcSetzeFarbe), RpcTarget.AllBuffered, hue);
+                }
                 SchliesseUI();
             }
             else
@@ -151,16 +190,12 @@ public class SelfPaintSystem : NetworkBehaviour
         }
     }
 
-    [Command]
-    void CmdSetzeFarbe(Color neue)
+    [PunRPC]
+    void RpcSetzeFarbe(float gewaehlterHue)
     {
-        if (GamePhaseManager.Instance != null &&
-            GamePhaseManager.Instance.phase == SpielPhase.Malen &&
-            !farbeGesetzt)
-        {
-            spielerFarbe = neue;
-            farbeGesetzt = true;
-        }
+        if (farbeGesetzt) return;   // schon gesetzt -> doppelten Aufruf ignorieren
+        farbeGesetzt = true;
+        SetzeSichtbareFarbe(Color.HSVToRGB(gewaehlterHue, 0.9f, 1f));
     }
 
     // ---------- UI ----------

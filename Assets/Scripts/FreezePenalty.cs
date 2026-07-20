@@ -1,5 +1,5 @@
 using System.Collections;
-using Mirror;
+using Photon.Pun;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
@@ -16,10 +16,11 @@ using UnityEngine.Rendering.Universal;
 ///   ist dabei durch Waende hindurch sichtbar (Roentgen-Effekt) - fuer
 ///   ALLE Spieler. Der Glow kommt ueber URP-Post-Processing (Bloom-Volume,
 ///   automatisch erzeugt).
-/// Gehoert auf das Spieler-Prefab (zusammen mit NetworkIdentity + NetworkTransformReliable).
+/// Gehoert auf das Spieler-Prefab (zusammen mit PhotonView + PhotonTransformView).
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
-public class FreezePenalty : NetworkBehaviour
+[RequireComponent(typeof(PhotonView))]
+public class FreezePenalty : MonoBehaviourPun
 {
     [Header("Bewegung")]
     public float tempo = 5f;
@@ -34,6 +35,7 @@ public class FreezePenalty : NetworkBehaviour
 
     CharacterController controller;
     Renderer[] eigeneRenderer;
+    SelfPaintSystem paint;
     Vector3 freezePosition;
     bool blinkt;
     bool zumSpawnTeleportiert;
@@ -42,6 +44,7 @@ public class FreezePenalty : NetworkBehaviour
     {
         controller = GetComponent<CharacterController>();
         eigeneRenderer = GetComponentsInChildren<Renderer>();
+        paint = GetComponent<SelfPaintSystem>();
     }
 
     void OnEnable() { GamePhaseManager.PhaseGewechselt += BeiPhasenwechsel; }
@@ -55,9 +58,10 @@ public class FreezePenalty : NetworkBehaviour
             zumSpawnTeleportiert = false;   // naechste Runde: wieder frisch warten+teleportieren
     }
 
-    public override void OnStartLocalPlayer()
+    void Start()
     {
-        ErzeugeGlowVolume();
+        if (photonView.IsMine)
+            ErzeugeGlowVolume();
     }
 
     /// <summary>Globales URP-Post-Processing-Volume mit Bloom, damit das Neon-Blinken gluehen kann.</summary>
@@ -81,11 +85,17 @@ public class FreezePenalty : NetworkBehaviour
 
     void Update()
     {
-        if (!isLocalPlayer)
+        if (!photonView.IsMine)
+            return;
+
+        // Bots sind passive Verstecke: sie stehen still (auf dem MasterClient
+        // ist ein Bot-Raumobjekt zwar "IsMine", darf aber NICHT auf die
+        // Host-Tastatur reagieren)
+        if (paint != null && paint.istBot)
             return;
 
         var phasen = GamePhaseManager.Instance;
-        bool binSucher = phasen != null && phasen.IstSucher(netIdentity);
+        bool binSucher = phasen != null && phasen.IstSucher(photonView.ViewID);
 
         // Sucher wartet auf den Spawn: keine Bewegung, schwarzer Bildschirm kommt aus LobbyUI
         if (binSucher && phasen.phase == SpielPhase.Suchen && !phasen.sucherAktiv)
@@ -134,20 +144,24 @@ public class FreezePenalty : NetworkBehaviour
         // die Freeze-Regel noch nicht
         if (phasen == null || phasen.phase != SpielPhase.Suchen || !phasen.sucherAktiv)
             return;
-        if (phasen.IstSucher(netIdentity) || blinkt)
+        if (phasen.IstSucher(photonView.ViewID) || blinkt)
             return;
 
         if (Vector3.Distance(transform.position, freezePosition) > bewegungsToleranz)
         {
             freezePosition = transform.position;
-            CmdBewegtWaehrendFreeze();
+            // Photon hat keinen dedizierten Server: der Spieler, der sich
+            // bewegt hat, meldet das direkt an alle (kein Umweg mehr ueber
+            // eine vertrauenswuerdige Zwischenstelle noetig fuer ein
+            // Party-Spiel dieser Groesse)
+            photonView.RPC(nameof(RpcBlinke), RpcTarget.All);
         }
     }
 
     void LateUpdate()
     {
         // einfache Verfolgerkamera fuer den lokalen Spieler
-        if (!isLocalPlayer)
+        if (!photonView.IsMine)
             return;
         var kamera = Camera.main;
         if (kamera == null)
@@ -158,15 +172,7 @@ public class FreezePenalty : NetworkBehaviour
         kamera.transform.LookAt(transform.position + Vector3.up * 1.5f);
     }
 
-    [Command]
-    void CmdBewegtWaehrendFreeze()
-    {
-        var phasen = GamePhaseManager.Instance;
-        if (phasen != null && phasen.phase == SpielPhase.Suchen && phasen.sucherAktiv && !phasen.IstSucher(netIdentity))
-            RpcBlinke();
-    }
-
-    [ClientRpc]
+    [PunRPC]
     void RpcBlinke()
     {
         if (!blinkt)

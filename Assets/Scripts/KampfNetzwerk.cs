@@ -1,16 +1,18 @@
-using System.Net;
-using System.Net.Sockets;
-using Mirror;
+using Photon.Pun;
+using Photon.Realtime;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Hashtable = ExitGames.Client.Photon.Hashtable;
 
 namespace NeonCatch
 {
     // ======================================================================
-    // ONLINE-KAMPFMODUS: derselbe Abschiess-Modus, aber mit Freunden UND
-    // Bots zusammen. Der Server steuert die Bots und rechnet alle Treffer,
-    // die Clients sehen synchronisierte Figuren, Schuesse und Farbkleckse.
-    // Room-Code-Schutz und kcp2k kommen vom LobbyManager (wie FARBMIMIK).
+    // ONLINE-KAMPFMODUS (NEON BLASTER) auf Photon PUN 2:
+    // Derselbe Abschiess-Modus, aber mit Freunden UND Bots zusammen. Der
+    // MasterClient (Photons Entsprechung zum "Host") steuert die Bots und
+    // rechnet Treffer/Leben, alle sehen synchronisierte Figuren, Schuesse
+    // und Farbkleckse. Beitritt ueber den 4-stelligen Code - keine IP, keine
+    // Portfreigabe, keine Fritzbox mehr (Photon laeuft ueber die Cloud).
     // ======================================================================
 
     /// <summary>Startet/beendet Online-Kampfrunden (vom KampfModus-Menue aufgerufen).</summary>
@@ -24,20 +26,23 @@ namespace NeonCatch
 
         public static void Hoste(int bots)
         {
-            if (!PruefePrefabs())
-                return;
+            if (!PruefePrefabs()) return;
             BotAnzahl = bots;
-            HoleManager().StartHost();
+            KampfManager.Sicherstellen();
+            PhotonRoomManager.Instanz.ErstelleRaum("neonblaster", "KampfSpieler", 7);
         }
 
-        public static void Trete(string ip, string code)
+        public static void Trete(string code)
         {
-            if (!PruefePrefabs())
-                return;
-            NetworkManager manager = HoleManager();
-            LobbyManager.EingegebenerCode = (code ?? "").Trim().ToUpper();
-            manager.networkAddress = string.IsNullOrWhiteSpace(ip) ? "localhost" : ip.Trim();
-            manager.StartClient();
+            if (!PruefePrefabs()) return;
+            KampfManager.Sicherstellen();
+            PhotonRoomManager.Instanz.TretRaumBei(code, "neonblaster", "KampfSpieler");
+        }
+
+        public static void Verlasse()
+        {
+            if (PhotonRoomManager.Instanz != null)
+                PhotonRoomManager.Instanz.VerlasseRaum();
         }
 
         // Ohne die Netzwerk-Prefabs wuerde Online ins Leere starten (Menue weg,
@@ -55,59 +60,107 @@ namespace NeonCatch
                     "(sie werden automatisch erstellt) oder Tools > FARBMIMIK > Netzwerk-Prefabs erstellen.");
             return false;
         }
-
-        public static void Verlasse()
-        {
-            if (NetworkServer.active && NetworkClient.isConnected)
-                NetworkManager.singleton.StopHost();
-            else if (NetworkClient.active)
-                NetworkManager.singleton.StopClient();
-        }
-
-        static NetworkManager HoleManager()
-        {
-            if (NetworkManager.singleton is KampfLobbyManager fertig)
-                return fertig;
-
-            if (NetworkManager.singleton != null)
-            {
-                Debug.LogError("KampfOnline: In dieser Szene liegt schon ein anderer NetworkManager " +
-                               "(altes MenuUI/NetworkManagerSetup?). Bitte aus der Szene entfernen!");
-                return NetworkManager.singleton;
-            }
-
-            var go = new GameObject("Kampf_NetzwerkManager");
-            return go.AddComponent<KampfLobbyManager>();
-        }
     }
 
-    /// <summary>
-    /// NetworkManager fuer den Online-Kampf: nutzt das KampfSpieler-Prefab,
-    /// spawnt nach dem ersten Spieler die Server-Bots.
-    /// </summary>
-    public class KampfLobbyManager : LobbyManager
+    // ======================================================================
+    // KampfManager: haelt den Rundenzustand (laeuft eine Runde?) als Photon-
+    // Room-Property und uebernimmt auf dem MasterClient das Bot-Spawnen und
+    // die Rundenende-Pruefung. Existiert auf JEDEM Client (jeder liest den
+    // Zustand mit) - wird von KampfOnline einmalig erzeugt.
+    // ======================================================================
+    public class KampfManager : MonoBehaviourPunCallbacks
     {
-        /// <summary>Laeuft gerade eine Runde? (nur auf dem Server gueltig)</summary>
-        public static bool RundeAktivServer;
+        public static KampfManager Instanz { get; private set; }
+
+        /// <summary>Sicht aller Clients: laeuft gerade eine Runde? (false = Lobby)</summary>
+        public static bool RundeLaeuft { get; private set; }
+
+        const string K_RUNDE = "kampfRunde";
 
         Vector3 spawnBasis;
         bool spawnBasisGesetzt;
+        bool rundeVorbeiGemeldet;
+        float naechstePruefung;
+        float raeumenBei;
+        bool raeumenGeplant;
 
-        public override void Awake()
+        public static void Sicherstellen()
         {
-            playerPrefab = Resources.Load<GameObject>("KampfSpieler");
-            if (playerPrefab == null)
-                Debug.LogError("KampfLobbyManager: Prefab 'KampfSpieler' fehlt! Im Unity-Menue " +
-                               "Tools > FARBMIMIK > Netzwerk-Prefabs erstellen ausfuehren.");
-
-            GameObject botPrefab = Resources.Load<GameObject>("KampfBotNetz");
-            if (botPrefab != null && !spawnPrefabs.Contains(botPrefab))
-                spawnPrefabs.Add(botPrefab);
-
-            base.Awake();
+            if (Instanz != null) return;
+            var go = new GameObject("KampfManager");
+            DontDestroyOnLoad(go);
+            Instanz = go.AddComponent<KampfManager>();
         }
 
-        public override void OnServerAddPlayer(NetworkConnectionToClient conn)
+        void Awake()
+        {
+            if (Instanz != null && Instanz != this) { Destroy(gameObject); return; }
+            Instanz = this;
+        }
+
+        public override void OnJoinedRoom()
+        {
+            LiesRunde(PhotonNetwork.CurrentRoom.CustomProperties);
+        }
+
+        public override void OnLeftRoom()
+        {
+            RundeLaeuft = false;
+            rundeVorbeiGemeldet = false;
+            raeumenGeplant = false;
+            spawnBasisGesetzt = false;
+        }
+
+        public override void OnRoomPropertiesUpdate(Hashtable propertiesThatChanged)
+        {
+            LiesRunde(propertiesThatChanged);
+        }
+
+        void LiesRunde(Hashtable props)
+        {
+            if (props != null && props.TryGetValue(K_RUNDE, out object r))
+                RundeLaeuft = (bool)r;
+        }
+
+        static void SetzeRunde(bool laeuft)
+        {
+            RundeLaeuft = laeuft;
+            PhotonNetwork.CurrentRoom.SetCustomProperties(new Hashtable { { K_RUNDE, laeuft } });
+        }
+
+        /// <summary>Host klickt in der Lobby auf RUNDE STARTEN.</summary>
+        public void StarteRunde()
+        {
+            if (!PhotonNetwork.IsMasterClient || RundeLaeuft) return;
+
+            int menschen = 0;
+            foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
+            {
+                if (k.istBot) { PhotonNetwork.Destroy(k.gameObject); continue; }
+                menschen++;
+                k.photonView.RPC(nameof(KampfNetzwerk.RpcReset), RpcTarget.All);
+            }
+
+            int botAnzahl = Mathf.Max(0, KampfOnline.ZielKaempfer - menschen);
+            SpawneBots(botAnzahl);
+            rundeVorbeiGemeldet = false;
+            SetzeRunde(true);
+        }
+
+        void SpawneBots(int anzahl)
+        {
+            for (int i = 0; i < anzahl; i++)
+            {
+                // Bot-Nummer als InstantiationData: sofort verfuegbar in Awake,
+                // ohne den RPC-Frame-Verzug (siehe KampfNetzwerk.Awake)
+                object[] daten = { i % 4 + 1 };
+                PhotonNetwork.InstantiateRoomObject("KampfBotNetz", SucheBotPlatz(i, anzahl),
+                    Quaternion.identity, 0, daten);
+            }
+        }
+
+        // Jeder Bot in einem eigenen Sektor rund um die Map
+        Vector3 SucheBotPlatz(int index, int gesamt)
         {
             if (!spawnBasisGesetzt)
             {
@@ -116,68 +169,6 @@ namespace NeonCatch
                 spawnBasisGesetzt = true;
             }
 
-            // Spieler leicht versetzt nebeneinander spawnen
-            Vector3 pos = spawnBasis + Quaternion.Euler(0f, numPlayers * 51f, 0f) *
-                          Vector3.forward * (numPlayers > 0 ? 2f : 0f);
-            GameObject spieler = Instantiate(playerPrefab, pos, Quaternion.identity);
-            NetworkServer.AddPlayerForConnection(conn, spieler);
-
-            // Spaeter Beitretende erfahren sofort, ob schon eine Runde laeuft
-            spieler.GetComponent<KampfNetzwerk>().TargetRundeStatus(conn, RundeAktivServer);
-        }
-
-        public override void OnStartServer()
-        {
-            RundeAktivServer = false;
-            base.OnStartServer();
-        }
-
-        public override void OnStopServer()
-        {
-            RundeAktivServer = false;
-            spawnBasisGesetzt = false;
-            base.OnStopServer();
-        }
-
-        /// <summary>Vom Host aus der Lobby gestartet: Spieler zuruecksetzen,
-        /// fehlende Plaetze mit Bots auffuellen, los!</summary>
-        public void StarteRunde()
-        {
-            if (RundeAktivServer) return;
-
-            int menschen = 0;
-            foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
-            {
-                if (k.istBot) { NetworkServer.Destroy(k.gameObject); continue; }
-                menschen++;
-                k.ResetFuerRunde();
-            }
-
-            int botAnzahl = Mathf.Max(0, KampfOnline.ZielKaempfer - menschen);
-            SpawneBots(botAnzahl);
-            RundeAktivServer = true;
-        }
-
-        void SpawneBots(int anzahl)
-        {
-            GameObject botPrefab = Resources.Load<GameObject>("KampfBotNetz");
-            if (botPrefab == null) return;
-
-            for (int i = 0; i < anzahl; i++)
-            {
-                GameObject bot = Instantiate(botPrefab, SucheBotPlatz(i, anzahl),
-                                             Quaternion.identity);
-                bot.name = "NetzBot_" + (i + 1);
-                var netz = bot.GetComponent<KampfNetzwerk>();
-                netz.istBot = true;
-                netz.botNummer = i % 4 + 1;
-                NetworkServer.Spawn(bot);
-            }
-        }
-
-        // Gleiche Idee wie beim Solo-Kampf: jeder Bot im eigenen Sektor rund um die Map
-        Vector3 SucheBotPlatz(int index, int gesamt)
-        {
             Vector3 mitte = spawnBasis;
             Terrain terrain = BurggrabenMittelalter.AktivesTerrain;
             if (terrain != null)
@@ -189,23 +180,65 @@ namespace NeonCatch
                 float winkel = (index * sektor + Random.Range(-sektor * 0.4f, sektor * 0.4f)) * Mathf.Deg2Rad;
                 float radius = Random.Range(10f, 25f);
                 Vector3 kandidat = mitte + new Vector3(Mathf.Cos(winkel), 0f, Mathf.Sin(winkel)) * radius;
-
                 if (BurggrabenMittelalter.IstGesperrt(kandidat)) continue;
                 kandidat.y = BurggrabenMittelalter.BodenHoehe(kandidat) + 0.5f;
                 return kandidat;
             }
             return mitte + Vector3.up * 0.5f;
         }
+
+        void Update()
+        {
+            if (!PhotonNetwork.IsMasterClient) return;
+
+            if (raeumenGeplant && Time.time >= raeumenBei)
+            {
+                raeumenGeplant = false;
+                foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
+                    if (k.istBot) PhotonNetwork.Destroy(k.gameObject);
+                SetzeRunde(false);
+            }
+
+            if (!RundeLaeuft || rundeVorbeiGemeldet) return;
+            if (Time.time < naechstePruefung) return;
+            naechstePruefung = Time.time + 1f;
+
+            var alle = FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None);
+            if (alle.Length < 2) return;
+
+            int lebendig = 0;
+            KampfNetzwerk letzter = null;
+            foreach (var k in alle)
+                if (!k.tot) { lebendig++; letzter = k; }
+
+            if (lebendig <= 1)
+            {
+                rundeVorbeiGemeldet = true;
+                string sieger = letzter == null ? "niemand"
+                    : letzter.istBot ? "Bot " + letzter.botNummer
+                    : letzter.spielerName != "" ? letzter.spielerName
+                    : "Spieler";
+                // KampfManager hat selbst keine PhotonView - die Meldung laeuft
+                // ueber die PhotonView einer beliebigen Figur (Sieger, sonst erste)
+                KampfNetzwerk traeger = letzter != null ? letzter : (alle.Length > 0 ? alle[0] : null);
+                if (traeger != null)
+                    traeger.photonView.RPC(nameof(KampfNetzwerk.RpcRundenEndeGlobal), RpcTarget.All, sieger);
+                raeumenBei = Time.time + 5f;   // Sieger-Anzeige kurz stehen lassen
+                raeumenGeplant = true;
+            }
+        }
     }
 
     /// <summary>
     /// Ein Kaempfer in der Online-Runde - Mensch ODER Bot (istBot).
     /// Menschen: Ego-Steuerung (Maus + WASD, Linksklick schiesst).
-    /// Bots: Server-KI (wandern, Ziel suchen, mit Streuung schiessen).
-    /// Gehoert auf die Prefabs KampfSpieler und KampfBotNetz.
+    /// Bots: MasterClient-KI (wandern, Ziel suchen, mit Streuung schiessen).
+    /// Gehoert auf die Prefabs KampfSpieler und KampfBotNetz
+    /// (mit PhotonView + PhotonTransformView).
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
-    public class KampfNetzwerk : NetworkBehaviour
+    [RequireComponent(typeof(PhotonView))]
+    public class KampfNetzwerk : MonoBehaviourPun
     {
         [Header("Bewegung")]
         public float tempo = 4f;
@@ -224,15 +257,11 @@ namespace NeonCatch
         public float botStreuung = 7f;
         public float botWunschAbstand = 6f;
 
-        [SyncVar] public bool istBot;
-        [SyncVar] public int botNummer = 1;      // welches KI/Bot_N-Modell
-        [SyncVar] public int spielerNummer;      // 1-7 fuer Menschen
-        [SyncVar] public string spielerName = "";
-        [SyncVar(hook = nameof(BeiLebenAenderung))] public int leben;
-        [SyncVar(hook = nameof(BeiTod))] public bool tot;
-
-        /// <summary>Sicht der Clients: laeuft gerade eine Runde? (false = Lobby)</summary>
-        public static bool RundeLaeuft;
+        public bool istBot;
+        public int botNummer = 1;      // welches KI/Bot_N-Modell
+        public string spielerName = "";
+        public int leben;
+        public bool tot;
 
         static string endText = "";
         static GameObject soloSpieler;   // deaktivierter Einzelspieler waehrend der Online-Runde
@@ -248,44 +277,44 @@ namespace NeonCatch
         int munition;
         float nachladeRest;
         Vector3 letztePos;
-        bool rundeVorbeiGemeldet;
-        float naechstePruefung;
         float kopiertAnzeige;
 
-        // Bot-KI (nur Server)
+        // Bot-KI (nur MasterClient)
         Vector3 wanderRichtung;
         float richtungsWechsel;
         float naechsterSchuss;
 
+        bool MasterSteuertMich => photonView.IsMine;   // Bots sind Raum-Objekte -> IsMine nur auf MasterClient
+
         void Awake()
         {
             cc = GetComponent<CharacterController>();
-        }
-
-        // ---------- Start / Ende ----------
-
-        public override void OnStartServer()
-        {
             leben = maxLeben;
-            if (!istBot)
+
+            // Bot-Nummer als InstantiationData (siehe KampfManager.SpawneBots) -
+            // sofort verfuegbar, kein RPC-Frame-Verzug
+            object[] daten = photonView.InstantiationData;
+            if (daten != null && daten.Length >= 1)
             {
-                bool[] belegt = new bool[8];
-                foreach (var s in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
-                    if (s != this && !s.istBot && s.spielerNummer >= 1 && s.spielerNummer <= 7)
-                        belegt[s.spielerNummer] = true;
-                for (int i = 1; i <= 7; i++)
-                    if (!belegt[i]) { spielerNummer = i; break; }
+                istBot = true;
+                botNummer = (int)daten[0];
             }
-            NeueWanderrichtung();
         }
 
-        public override void OnStartClient()
+        void Start()
         {
             yaw = transform.eulerAngles.y;
             letztePos = transform.position;
+            NeueWanderrichtung();
             BaueVisual();
 
-            if (!isLocalPlayer)
+            if (photonView.IsMine && !istBot)
+            {
+                LokalStart();
+                photonView.RPC(nameof(RpcSetzeName), RpcTarget.AllBuffered, SpielerProfil.Name);
+            }
+
+            if (!(photonView.IsMine && !istBot))
             {
                 herzen = gameObject.AddComponent<WeltHerzen>();
                 herzen.maxLeben = maxLeben;
@@ -293,7 +322,7 @@ namespace NeonCatch
             }
         }
 
-        public override void OnStartLocalPlayer()
+        void LokalStart()
         {
             // Einzelspieler-Figur (samt ihrer Kamera) schlafen legen
             GameObject solo = GameObject.FindGameObjectWithTag("Player");
@@ -305,22 +334,22 @@ namespace NeonCatch
             eigeneKamera = kamGO.AddComponent<Camera>();
             kamGO.AddComponent<AudioListener>();
 
-            // Cursor bleibt frei - erst beim Rundenstart wird er gesperrt (Lobby!)
             munition = maxMunition;
             endText = "";
-            CmdSetzeName(SpielerProfil.Name);
         }
 
-        public override void OnStopLocalPlayer()
+        void OnDestroy()
         {
-            if (soloSpieler != null) soloSpieler.SetActive(true);
-            RundeLaeuft = false;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            if (photonView.IsMine && !istBot && soloSpieler != null)
+            {
+                soloSpieler.SetActive(true);
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
         }
 
-        [Command]
-        void CmdSetzeName(string name)
+        [PunRPC]
+        void RpcSetzeName(string name)
         {
             name = (name ?? "").Trim();
             if (name.Length > 14) name = name.Substring(0, 14);
@@ -331,10 +360,10 @@ namespace NeonCatch
         // die eigene Figur bleibt unsichtbar (Ego-Perspektive)
         void BaueVisual()
         {
-            if (isLocalPlayer) return;
+            if (photonView.IsMine && !istBot) return;
 
             float zielHoehe = istBot ? 0.75f : 1.55f;
-            int nr = istBot ? botNummer : (Mathf.Max(1, spielerNummer) - 1) % 4 + 1;
+            int nr = istBot ? botNummer : (Mathf.Max(1, photonView.OwnerActorNr) - 1) % 4 + 1;
             GameObject prefab = Resources.Load<GameObject>("KI/Bot_" + Mathf.Clamp(nr, 1, 4));
 
             if (prefab != null)
@@ -363,13 +392,16 @@ namespace NeonCatch
 
         void Update()
         {
-            if (isServer && istBot && !tot && KampfLobbyManager.RundeAktivServer)
+            bool runde = KampfManager.RundeLaeuft;
+
+            // Bot-KI laeuft nur auf dem MasterClient (dort ist der Bot "IsMine")
+            if (istBot && MasterSteuertMich && !tot && runde)
                 BotKI();
 
-            if (isLocalPlayer)
+            if (photonView.IsMine && !istBot)
             {
                 // Cursor: in der Lobby frei (zum Klicken), im Kampf gesperrt
-                bool sperren = RundeLaeuft && !tot;
+                bool sperren = runde && !tot;
                 if (sperren && Cursor.lockState != CursorLockMode.Locked)
                 {
                     Cursor.lockState = CursorLockMode.Locked;
@@ -381,7 +413,7 @@ namespace NeonCatch
                     Cursor.visible = true;
                 }
 
-                if (RundeLaeuft && !tot) LokaleSteuerung();
+                if (runde && !tot) LokaleSteuerung();
 
                 if (kopiertAnzeige > 0f) kopiertAnzeige -= Time.deltaTime;
 
@@ -389,10 +421,6 @@ namespace NeonCatch
                 if (kb != null && kb.escapeKey.wasPressedThisFrame)
                     KampfOnline.Verlasse();
             }
-
-            // Rundenende prueft genau EIN Objekt auf dem Server (Spieler 1)
-            if (isServer && !istBot && spielerNummer == 1)
-                PruefeRundenEnde();
 
             AktualisiereVisualAnimation();
         }
@@ -435,7 +463,7 @@ namespace NeonCatch
                 if (munition == maxMunition) nachladeRest = nachladeZeit;
                 munition--;
                 Vector3 schussRichtung = eigeneKamera.transform.forward;
-                CmdSchiesse(eigeneKamera.transform.position + schussRichtung * 0.3f, schussRichtung);
+                Schiesse(eigeneKamera.transform.position + schussRichtung * 0.3f, schussRichtung);
             }
         }
 
@@ -449,69 +477,19 @@ namespace NeonCatch
                 visualAnim.MeldeBewegung(bewegt, true, true, 0f);
         }
 
-        // ---------- Schiessen (Server rechnet, alle sehen) ----------
+        // ---------- Schiessen (Schuetze rechnet lokal, verteilt Effekt + Schaden) ----------
 
-        [Command]
-        void CmdSchiesse(Vector3 start, Vector3 richtung)
+        void Schiesse(Vector3 start, Vector3 richtung)
         {
-            if (tot || !KampfLobbyManager.RundeAktivServer) return;
-            FuehreSchussAus(start, richtung);
-        }
+            if (tot || !KampfManager.RundeLaeuft) return;
 
-        /// <summary>Host klickt in der Lobby auf RUNDE STARTEN.</summary>
-        [Command]
-        void CmdStarteRunde()
-        {
-            // Nur die Host-Verbindung darf starten
-            if (!(connectionToClient is LocalConnectionToClient)) return;
-            var manager = NetworkManager.singleton as KampfLobbyManager;
-            if (manager == null) return;
-            manager.StarteRunde();
-            RpcRundeStatus(true);
-        }
-
-        [Server]
-        public void ResetFuerRunde()
-        {
-            leben = maxLeben;
-            tot = false;
-            rundeVorbeiGemeldet = false;
-        }
-
-        [TargetRpc]
-        public void TargetRundeStatus(NetworkConnectionToClient ziel, bool laeuft)
-        {
-            RundeLaeuft = laeuft;
-        }
-
-        [ClientRpc]
-        void RpcRundeStatus(bool laeuft)
-        {
-            RundeLaeuft = laeuft;
-            if (laeuft)
-            {
-                endText = "";
-                var lokal = NetworkClient.localPlayer != null
-                    ? NetworkClient.localPlayer.GetComponent<KampfNetzwerk>() : null;
-                if (lokal != null)
-                {
-                    lokal.munition = lokal.maxMunition;
-                    lokal.nachladeRest = 0f;
-                }
-            }
-        }
-
-        [Server]
-        void FuehreSchussAus(Vector3 start, Vector3 richtung)
-        {
             Vector3 ende = start + richtung * reichweite;
             Vector3 normal = -richtung;
             KampfNetzwerk getroffener = null;
-            uint getroffenId = 0;
 
-            // ALLE Treffer entlang des Strahls holen und den NAECHSTEN nehmen,
-            // der nicht der Schuetze selbst ist - sonst blockt der eigene
-            // CharacterController den Schuss direkt vor der Kamera
+            // Naechsten Treffer nehmen, der NICHT der eigene Koerper ist -
+            // sonst blockt der eigene CharacterController den Schuss direkt
+            // vor der Kamera
             RaycastHit[] alleTreffer = Physics.RaycastAll(start, richtung, reichweite,
                 ~(1 << 4), QueryTriggerInteraction.Ignore);
             float naechste = float.MaxValue;
@@ -527,55 +505,57 @@ namespace NeonCatch
                 getroffener = (wer != null && !wer.tot) ? wer : null;
             }
 
+            // Schuss-Effekt fuer ALLE (getroffene ViewID zum Anheften des Farbkleckses)
+            int zielView = getroffener != null ? getroffener.photonView.ViewID : 0;
+            photonView.RPC(nameof(RpcSchussEffekt), RpcTarget.All, start, ende, normal, zielView);
+
+            // Schaden meldet der Getroffene an den MasterClient (der rechnet Leben)
             if (getroffener != null)
-            {
-                getroffenId = getroffener.netId;
-                getroffener.NimmSchaden();
-            }
-            RpcSchussEffekt(start, ende, normal, getroffenId);
+                getroffener.photonView.RPC(nameof(RpcTrefferAnfrage), RpcTarget.MasterClient);
         }
 
-        [ClientRpc]
-        void RpcSchussEffekt(Vector3 start, Vector3 ende, Vector3 normal, uint getroffenId)
+        [PunRPC]
+        void RpcSchussEffekt(Vector3 start, Vector3 ende, Vector3 normal, int zielView)
         {
             Transform anheften = null;
-            if (getroffenId != 0 && NetworkClient.spawned.TryGetValue(getroffenId, out NetworkIdentity id))
-                anheften = id.transform;
+            if (zielView != 0)
+            {
+                PhotonView pv = PhotonView.Find(zielView);
+                if (pv != null) anheften = pv.transform;
+            }
             Farbschuss.Abfeuern(start, ende, normal, anheften);
         }
 
-        [Server]
-        public void NimmSchaden()
+        // Nur auf dem MasterClient ausgefuehrt (RpcTarget.MasterClient)
+        [PunRPC]
+        void RpcTrefferAnfrage()
         {
-            if (tot || !KampfLobbyManager.RundeAktivServer) return;
-            leben--;
-            if (leben <= 0)
+            if (!PhotonNetwork.IsMasterClient || tot || !KampfManager.RundeLaeuft) return;
+            int neuesLeben = leben - 1;
+            photonView.RPC(nameof(RpcSetzeLeben), RpcTarget.All, neuesLeben);
+            if (neuesLeben <= 0)
             {
-                tot = true;
+                photonView.RPC(nameof(RpcSetzeTot), RpcTarget.All);
                 if (istBot)
                     Invoke(nameof(EntferneBot), 4f);   // nach dem Umfallen liegen lassen
             }
         }
 
-        [Server]
         void EntferneBot()
         {
-            if (gameObject != null)
-                NetworkServer.Destroy(gameObject);
+            if (PhotonNetwork.IsMasterClient && this != null && gameObject != null)
+                PhotonNetwork.Destroy(gameObject);
         }
 
-        // ---------- SyncVar-Hooks ----------
-
-        void BeiLebenAenderung(int alt, int neu)
+        [PunRPC]
+        void RpcSetzeLeben(int neu)
         {
-            if (herzen != null) herzen.SetzeLeben(neu);
+            leben = neu;
+            if (herzen != null) herzen.SetzeLeben(Mathf.Max(0, neu));
 
-            // Letztes Leben: Blitze kreisen um die Figur - genau wie beim
-            // Solo-Spieler, fuer ALLE sichtbar (auch bei Bots)
+            // Letztes Leben: Blitze kreisen um die Figur - fuer ALLE sichtbar
             if (neu == 1 && !tot && blitzEffekt == null)
-            {
                 blitzEffekt = BlitzUmkreisung.Erzeuge(transform);
-            }
             else if (neu != 1 && blitzEffekt != null)
             {
                 Destroy(blitzEffekt.gameObject);
@@ -583,81 +563,55 @@ namespace NeonCatch
             }
         }
 
-        void BeiTod(bool alt, bool neu)
+        [PunRPC]
+        void RpcSetzeTot()
         {
-            if (!neu)
-            {
-                // Wiederbelebt fuer die naechste Runde: Figur frisch aufbauen
-                if (visual != null) { Destroy(visual); visual = null; visualAnim = null; }
-                BaueVisual();
-                if (herzen != null) herzen.SetzeLeben(maxLeben);
-                return;
-            }
-
+            tot = true;
             if (visualAnim != null) visualAnim.SpieleTod();
             else if (visual != null) visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
             if (herzen != null) herzen.SetzeLeben(0);
             if (blitzEffekt != null) { Destroy(blitzEffekt.gameObject); blitzEffekt = null; }
 
-            if (isLocalPlayer)
+            if (photonView.IsMine && !istBot)
             {
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
             }
         }
 
-        // ---------- Rundenende ----------
-
-        [Server]
-        void PruefeRundenEnde()
+        /// <summary>Neue Runde: wiederbeleben und Figur frisch aufbauen.</summary>
+        [PunRPC]
+        public void RpcReset()
         {
-            if (!KampfLobbyManager.RundeAktivServer) return;
-            if (rundeVorbeiGemeldet || Time.time < naechstePruefung) return;
-            naechstePruefung = Time.time + 1f;
+            leben = maxLeben;
+            tot = false;
+            munition = maxMunition;
+            nachladeRest = 0f;
+            endText = "";
 
-            var alle = FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None);
-            if (alle.Length < 2) return;
-
-            int lebendig = 0;
-            KampfNetzwerk letzter = null;
-            foreach (var k in alle)
-                if (!k.tot) { lebendig++; letzter = k; }
-
-            if (lebendig <= 1)
+            if (visual != null && (photonView.IsMine == false || istBot))
             {
-                rundeVorbeiGemeldet = true;
-                KampfLobbyManager.RundeAktivServer = false;
-                string sieger = letzter == null ? "niemand"
-                    : letzter.istBot ? "Bot " + letzter.botNummer
-                    : letzter.spielerName != "" ? letzter.spielerName
-                    : "Spieler " + letzter.spielerNummer;
-                RpcRundenEnde(sieger);
-                // Kurz die Sieger-Anzeige stehen lassen, dann zurueck in die Lobby
-                Invoke(nameof(RaeumeRundeAuf), 5f);
+                Destroy(visual); visual = null; visualAnim = null;
+                BaueVisual();
+            }
+            if (herzen != null) herzen.SetzeLeben(maxLeben);
+        }
+
+        [PunRPC]
+        public void RpcRundenEndeGlobal(string sieger)
+        {
+            endText = "RUNDE VORBEI - Sieger: " + sieger;
+            if (photonView.IsMine && !istBot)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
             }
         }
 
-        [Server]
-        void RaeumeRundeAuf()
-        {
-            foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
-                if (k.istBot) NetworkServer.Destroy(k.gameObject);
-            RpcRundeStatus(false);
-        }
-
-        [ClientRpc]
-        void RpcRundenEnde(string sieger)
-        {
-            endText = "RUNDE VORBEI - Sieger: " + sieger;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-
-        // ---------- Bot-KI (Server) ----------
+        // ---------- Bot-KI (nur MasterClient) ----------
 
         void BotKI()
         {
-            // Naechstes lebendes, sichtbares Ziel (Mensch ODER anderer Bot)
             Transform ziel = null;
             float beste = botSichtweite;
             foreach (var k in FindObjectsByType<KampfNetzwerk>(FindObjectsSortMode.None))
@@ -697,10 +651,9 @@ namespace NeonCatch
                     naechsterSchuss = Time.time + botSchussPause * Random.Range(0.8f, 1.3f);
                     Vector3 start = transform.position + Vector3.up * 0.45f;
                     Vector3 richtung = (ziel.position + Vector3.up * 0.5f - start).normalized;
-                    // absichtliche Streuung - Bots treffen nicht immer
                     richtung = Quaternion.Euler(Random.Range(-botStreuung, botStreuung),
                                                 Random.Range(-botStreuung, botStreuung), 0f) * richtung;
-                    FuehreSchussAus(start + richtung * 0.2f, richtung);
+                    Schiesse(start + richtung * 0.2f, richtung);
                 }
             }
             else
@@ -735,20 +688,8 @@ namespace NeonCatch
         static Texture2D lobbyKartenTex;
         GUIStyle lobbyTextStil, lobbyTitelStil;
 
-        static string LokaleIP()
-        {
-            try
-            {
-                foreach (var ip in Dns.GetHostAddresses(Dns.GetHostName()))
-                    if (ip.AddressFamily == AddressFamily.InterNetwork)
-                        return ip.ToString();
-            }
-            catch { }
-            return "unbekannt";
-        }
-
-        // Online-Lobby: Room-Code, Spielerliste mit Namen, Host startet die
-        // Runde - Beschreibung auf leicht weissem Grund, Hintergrund bleibt sichtbar
+        // Online-Lobby: Beitritts-Code, Spielerliste mit Namen, Host startet
+        // die Runde - auf leicht weissem Grund, Hintergrund bleibt sichtbar
         void ZeichneLobby(float sw, float sh)
         {
             if (lobbyKartenTex == null)
@@ -766,7 +707,6 @@ namespace NeonCatch
             lobbyTextStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
             lobbyTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
 
-            // Leicht weisse Schicht ueber dem ganzen Bild
             Color alt = GUI.color;
             GUI.color = new Color(1f, 1f, 1f, 0.4f);
             GUI.DrawTexture(new Rect(0f, 0f, sw, sh), Texture2D.whiteTexture);
@@ -775,19 +715,18 @@ namespace NeonCatch
             var karte = new Rect(sw * 0.5f - sw * 0.22f, sh * 0.08f, sw * 0.44f, sh * 0.8f);
             GUI.DrawTexture(karte, lobbyKartenTex);
 
-            float y = karte.y + sh * 0.015f;
+            float y = karte.y + sh * 0.02f;
             lobbyTitelStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
             GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f), "ONLINE-LOBBY", lobbyTitelStil);
-            y += sh * 0.055f;
+            y += sh * 0.06f;
 
             lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
             GUI.Label(new Rect(karte.x, y, karte.width, sh * 0.05f),
-                      "Beitritts-Code: " + LobbyManager.RoomCode, lobbyTextStil);
-            y += sh * 0.05f;
+                      "Beitritts-Code: " + PhotonRoomManager.RoomCode, lobbyTextStil);
+            y += sh * 0.055f;
 
-            if (NetworkServer.active)
+            if (PhotonNetwork.IsMasterClient)
             {
-                // Code + IP mit einem Klick kopieren und an Freunde schicken
                 var kopierKnopf = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold };
                 kopierKnopf.fontSize = Mathf.RoundToInt(sh * 0.02f);
                 string kopierText = kopiertAnzeige > 0f ? "Kopiert! Jetzt verschicken." : "CODE KOPIEREN";
@@ -795,21 +734,17 @@ namespace NeonCatch
                         kopierText, kopierKnopf))
                 {
                     GUIUtility.systemCopyBuffer =
-                        "Beitritts-Code: " + LobbyManager.RoomCode +
-                        " - Spiel NEON CATCH starten, RUNDE BEITRETEN klicken, " +
-                        "mich in der Freundesliste auswählen und den Code eintippen!";
+                        "Beitritts-Code: " + PhotonRoomManager.RoomCode +
+                        " - Spiel NEON CATCH starten, RUNDE BEITRETEN klicken und den Code eintippen!";
                     kopiertAnzeige = 2f;
                 }
                 y += sh * 0.06f;
 
-                // Kurzanleitung inkl. Fritzbox-Hinweis
                 lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.018f);
-                GUI.Label(new Rect(karte.x + karte.width * 0.05f, y, karte.width * 0.9f, sh * 0.08f),
-                          "Schick deinen Freunden den Code (Knopf oben). Beim ERSTEN Mal auch deine IP: " +
-                          LokaleIP() + " - danach speichern dich Freunde einfach mit Namen. " +
-                          "Übers Internet: vorher in der Fritzbox Port 7777 (UDP) freigeben - " +
-                          "Anleitung unter HILFE im Startmenü.", lobbyTextStil);
-                y += sh * 0.085f;
+                GUI.Label(new Rect(karte.x + karte.width * 0.05f, y, karte.width * 0.9f, sh * 0.06f),
+                          "Schick deinen Freunden den Code (Knopf oben). Kein Router, keine IP - " +
+                          "Photon verbindet euch automatisch übers Internet.", lobbyTextStil);
+                y += sh * 0.07f;
             }
 
             // Wer tritt dem Spiel bei?
@@ -819,8 +754,8 @@ namespace NeonCatch
             {
                 if (k.istBot) continue;
                 menschen++;
-                liste += (k.spielerName != "" ? k.spielerName : "Spieler " + k.spielerNummer);
-                if (k.isLocalPlayer) liste += "  <- DU";
+                liste += (k.spielerName != "" ? k.spielerName : "Spieler");
+                if (k.photonView.IsMine) liste += "  <- DU";
                 liste += "\n";
             }
             int botsZumAuffuellen = Mathf.Max(0, KampfOnline.ZielKaempfer - menschen);
@@ -832,12 +767,11 @@ namespace NeonCatch
                       "Wer tritt bei (" + menschen + "/7):\n" + liste, lobbyTextStil);
             y += sh * 0.2f;
 
-            // Kurze Spielerklaerung (2 Saetze)
             lobbyTextStil.fontSize = Mathf.RoundToInt(sh * 0.019f);
             GUI.Label(new Rect(karte.x + karte.width * 0.05f, y, karte.width * 0.9f, sh * 0.07f),
                       "So geht's: Jeder gegen jeden mit Farb-Blastern - 3 Leben, 3 Schuss, die einzeln nachladen. " +
                       "Wer als Letzter übrig ist, gewinnt die Runde!", lobbyTextStil);
-            y += sh * 0.065f;
+            y += sh * 0.075f;
 
             if (endText != "")
             {
@@ -848,11 +782,11 @@ namespace NeonCatch
 
             var knopf = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, wordWrap = true };
             knopf.fontSize = Mathf.RoundToInt(sh * 0.028f);
-            if (NetworkServer.active)
+            if (PhotonNetwork.IsMasterClient)
             {
                 if (GUI.Button(new Rect(karte.x + karte.width * 0.15f, y, karte.width * 0.7f, sh * 0.07f),
                         "RUNDE STARTEN", knopf))
-                    CmdStarteRunde();
+                    if (KampfManager.Instanz != null) KampfManager.Instanz.StarteRunde();
             }
             else
             {
@@ -870,7 +804,7 @@ namespace NeonCatch
 
         void OnGUI()
         {
-            if (!isLocalPlayer) return;
+            if (!(photonView.IsMine && !istBot)) return;
 
             if (hudStil == null)
                 hudStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
@@ -878,20 +812,17 @@ namespace NeonCatch
             float sw = Screen.width, sh = Screen.height;
 
             // Lobby statt Kampf-HUD, solange keine Runde laeuft
-            if (!RundeLaeuft)
+            if (!KampfManager.RundeLaeuft)
             {
                 ZeichneLobby(sw, sh);
                 return;
             }
 
-            // Room-Code oben links (der Host gibt Code + IP an seine Freunde)
             hudStil.alignment = TextAnchor.UpperLeft;
             hudStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
             hudStil.normal.textColor = Color.white;
-            string info = "Room-Code: " + LobbyManager.RoomCode;
-            if (NetworkServer.active)
-                info += "   (Freunde brauchen deine IP + diesen Code)";
-            GUI.Label(new Rect(14f, sh * 0.095f, sw * 0.9f, sh * 0.05f), info, hudStil);
+            GUI.Label(new Rect(14f, sh * 0.095f, sw * 0.9f, sh * 0.05f),
+                      "Code: " + PhotonRoomManager.RoomCode, hudStil);
 
             // Herzen
             hudStil.fontSize = Mathf.RoundToInt(sh * 0.05f);
@@ -913,7 +844,6 @@ namespace NeonCatch
             }
             GUI.color = alt;
 
-            // Fadenkreuz
             if (!tot)
                 GUI.Box(new Rect(sw * 0.5f - 2f, sh * 0.5f - 2f, 4f, 4f), GUIContent.none);
 

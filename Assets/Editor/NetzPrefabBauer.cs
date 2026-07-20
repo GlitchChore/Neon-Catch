@@ -1,14 +1,19 @@
-using Mirror;
-using NeonCatch;
+using System.Collections.Generic;
+using Photon.Pun;
 using UnityEditor;
 using UnityEngine;
 
 /// <summary>
-/// Baut alle Netzwerk-Prefabs automatisch:
+/// Baut alle Photon-Netzwerk-Prefabs automatisch:
 /// Unity-Menue: Tools > FARBMIMIK > Netzwerk-Prefabs erstellen
 /// - Spieler        (FARBMIMIK-Modus: Kapsel, SelfPaint + Freeze)
 /// - KampfSpieler   (Online-Kampf: Mensch, Ego-Steuerung)
 /// - KampfBotNetz   (Online-Kampf: Server-Bot)
+/// Jedes Prefab bekommt PhotonView + PhotonTransformView (fuer die
+/// Positions-Synchronisation) - das ist Photons Ersatz fuer Mirrors
+/// NetworkIdentity + NetworkTransform.
+/// Die Prefabs MUESSEN im Ordner "Resources" liegen, damit
+/// PhotonNetwork.Instantiate("Spieler") sie findet.
 /// Vorhandene Prefabs werden NICHT ueberschrieben.
 /// </summary>
 public static class NetzPrefabBauer
@@ -65,6 +70,18 @@ public static class NetzPrefabBauer
         Debug.Log("NetzPrefabBauer: " + name + ".prefab erstellt.");
     }
 
+    // Haengt PhotonView + PhotonTransformView an und verdrahtet sie
+    // (der View beobachtet den TransformView -> Position/Rotation werden
+    // automatisch an alle Clients uebertragen).
+    static void FuegeNetzwerkHinzu(GameObject go)
+    {
+        var view = go.AddComponent<PhotonView>();
+        var transformView = go.AddComponent<PhotonTransformView>();
+        view.ObservedComponents = new List<Component> { transformView };
+        view.Synchronization = ViewSynchronization.UnreliableOnChange;
+        view.OwnershipTransfer = OwnershipOption.Fixed;
+    }
+
     // FARBMIMIK-Spieler: sichtbare Kapsel, malt sich selbst an, Freeze-Strafe
     static bool ErstelleFarbmimikSpieler()
     {
@@ -74,9 +91,7 @@ public static class NetzPrefabBauer
         go.name = "Spieler";
         Object.DestroyImmediate(go.GetComponent<CapsuleCollider>());
 
-        go.AddComponent<NetworkIdentity>();
-        var nt = go.AddComponent<NetworkTransformReliable>();
-        nt.syncDirection = SyncDirection.ClientToServer;
+        FuegeNetzwerkHinzu(go);
 
         var cc = go.AddComponent<CharacterController>();
         cc.height = 2f;
@@ -97,31 +112,27 @@ public static class NetzPrefabBauer
         if (Existiert("KampfSpieler")) return false;
 
         var go = new GameObject("KampfSpieler");
-        go.AddComponent<NetworkIdentity>();
-        var nt = go.AddComponent<NetworkTransformReliable>();
-        nt.syncDirection = SyncDirection.ClientToServer;
+        FuegeNetzwerkHinzu(go);
 
         var cc = go.AddComponent<CharacterController>();
         cc.height = 1.7f;
         cc.radius = 0.3f;
         cc.center = new Vector3(0f, 0.85f, 0f);
 
-        go.AddComponent<KampfNetzwerk>();
+        go.AddComponent<NeonCatch.KampfNetzwerk>();
 
         Speichere(go, "KampfSpieler");
         return true;
     }
 
-    // Online-Kampf-Bot: wird vom SERVER gesteuert (SyncDirection bleibt
-    // Server -> Client), Trefferbox passend zur 0.75-m-Figur
+    // Online-Kampf-Bot: wird vom MasterClient gesteuert, Trefferbox passend
+    // zur 0.75-m-Figur
     static bool ErstelleKampfBot()
     {
         if (Existiert("KampfBotNetz")) return false;
 
         var go = new GameObject("KampfBotNetz");
-        go.AddComponent<NetworkIdentity>();
-        var nt = go.AddComponent<NetworkTransformReliable>();
-        nt.syncDirection = SyncDirection.ServerToClient;
+        FuegeNetzwerkHinzu(go);
 
         var cc = go.AddComponent<CharacterController>();
         cc.height = 0.75f;
@@ -130,7 +141,7 @@ public static class NetzPrefabBauer
         cc.slopeLimit = 45f;
         cc.stepOffset = 0.08f;
 
-        go.AddComponent<KampfNetzwerk>();
+        go.AddComponent<NeonCatch.KampfNetzwerk>();
 
         Speichere(go, "KampfBotNetz");
         return true;

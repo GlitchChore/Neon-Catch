@@ -1,11 +1,6 @@
-using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Net.Sockets;
-using Mirror;
+using Photon.Pun;
 using UnityEngine;
-using UnityEngine.Networking;
 using UnityEngine.UI;
 
 /// <summary>
@@ -33,145 +28,75 @@ public static class SpielerProfil
 }
 
 /// <summary>
-/// Gespeicherte Freunde (Name + IP) - die IP eines Freundes bleibt meist
-/// gleich, also einmal speichern und danach nur noch anklicken.
-/// Format in PlayerPrefs: "Name|IP;Name|IP" (maximal 8 Freunde).
-/// </summary>
-public static class FreundeListe
-{
-    const string Schluessel = "NeonCatch_Freunde";
-
-    /// <summary>Alle gespeicherten Freunde, neueste zuerst. [0]=Name, [1]=IP.</summary>
-    public static List<string[]> Alle()
-    {
-        var ergebnis = new List<string[]>();
-        string roh = PlayerPrefs.GetString(Schluessel, "");
-        foreach (string eintrag in roh.Split(';'))
-        {
-            var teile = eintrag.Split('|');
-            if (teile.Length == 2 && teile[0].Trim() != "" && teile[1].Trim() != "")
-                ergebnis.Add(new[] { teile[0].Trim(), teile[1].Trim() });
-        }
-        return ergebnis;
-    }
-
-    public static void Speichere(string name, string ip)
-    {
-        name = (name ?? "").Trim().Replace("|", "").Replace(";", "");
-        ip = (ip ?? "").Trim().Replace("|", "").Replace(";", "");
-        if (name == "" || ip == "")
-            return;
-        if (name.Length > 14) name = name.Substring(0, 14);
-
-        var alle = Alle();
-        alle.RemoveAll(f => f[0].ToLower() == name.ToLower());
-        alle.Insert(0, new[] { name, ip });
-        while (alle.Count > 8)
-            alle.RemoveAt(alle.Count - 1);
-
-        var teile = new List<string>();
-        foreach (var f in alle)
-            teile.Add(f[0] + "|" + f[1]);
-        PlayerPrefs.SetString(Schluessel, string.Join(";", teile));
-    }
-}
-
-/// <summary>
-/// Eingebaute Hilfe-Texte für BEIDE Modi - getrennt nach Rolle:
-/// HostAnleitung = was der Ersteller der Runde machen muss (inkl. Portfreigabe)
-/// BeitretenAnleitung = was ein beitretender Freund machen muss
-/// Angezeigt in der FARBMIMIK-UI UND im Kampfmodus-Startmenü.
+/// Eingebaute Hilfe-Texte für BEIDE Modi - getrennt nach Rolle. Dank Photon
+/// braucht es keine IP, keine Portfreigabe und keine Fritzbox mehr - der
+/// 4-stellige Code reicht.
 /// </summary>
 public static class NetzwerkHilfe
 {
     public const string HostAnleitung =
         "DU BIST DER HOST (RUNDE ERSTELLEN)\n" +
         "\n" +
-        "1. 'Runde erstellen' klicken - du bekommst einen ROOM-CODE\n" +
-        "2. Schick deinen Freunden den Code und deine IP\n" +
-        "    (der Kopieren-Knopf in der Lobby macht das für dich)\n" +
-        "    - Freunde im GLEICHEN WLAN brauchen deine WLAN-IP\n" +
-        "    - Freunde ÜBERS INTERNET brauchen deine Internet-IP\n" +
-        "3. Nur für Internet-Freunde: EINMAL Port 7777 (UDP)\n" +
-        "    im Router freigeben - so geht das:\n" +
+        "1. 'Runde erstellen' klicken - du bekommst einen 4-stelligen Code\n" +
+        "2. Schick deinen Freunden diesen Code (Kopieren-Knopf in der Lobby)\n" +
+        "3. Sobald sie den Code eingegeben haben, seht ihr euch in der Lobby\n" +
+        "4. Wenn alle da sind: SPIEL STARTEN klicken\n" +
         "\n" +
-        "FRITZBOX - 4 SCHRITTE:\n" +
-        "1. Im Browser  fritz.box  öffnen und anmelden\n" +
-        "    (Passwort steht unten auf dem Router-Aufkleber)\n" +
-        "2. Internet > Freigaben > Reiter 'Portfreigaben'\n" +
-        "3. 'Gerät für Freigaben hinzufügen' > deinen PC wählen\n" +
-        "    > 'Neue Freigabe' > 'Portfreigabe'\n" +
-        "4. Protokoll UDP, Port 7777 bis 7777 eintragen,\n" +
-        "    dann OK und Übernehmen. Fertig!\n" +
-        "\n" +
-        "ANDERE ROUTER - 4 SCHRITTE:\n" +
-        "1. Router-Adresse im Browser öffnen (steht auf dem\n" +
-        "    Aufkleber, oft 192.168.1.1) und anmelden\n" +
-        "2. Menüpunkt 'Portfreigabe' oder 'Port Forwarding'\n" +
-        "    suchen (oft unter 'Erweitert')\n" +
-        "3. Neue Regel: dein PC, Protokoll UDP, Port 7777\n" +
-        "4. Speichern - fertig!\n" +
-        "\n" +
-        "Klappt es trotzdem nicht? Alle installieren das\n" +
-        "kostenlose 'Tailscale' - dann geht es wie im WLAN.";
+        "Das war's! Photon läuft über einen Cloud-Server - keine IP nötig,\n" +
+        "keine Portfreigabe, keine Fritzbox-Einstellungen. Funktioniert\n" +
+        "einfach übers Internet, egal wo ihr seid.";
 
     public const string BeitretenAnleitung =
         "DU TRITTST EINER RUNDE BEI\n" +
         "\n" +
-        "1. Frag den Host nach seiner IP und dem ROOM-CODE\n" +
-        "    (er kann dir beides mit einem Klick schicken)\n" +
-        "2. IP eintragen:\n" +
-        "    - Gleiches WLAN wie der Host: seine WLAN-IP\n" +
-        "    - Übers Internet: seine INTERNET-IP\n" +
-        "3. Room-Code eintragen (z.B. X7K9)\n" +
-        "4. 'Beitreten' klicken - fertig!\n" +
+        "1. Frag den Host nach dem 4-stelligen Code\n" +
+        "2. Code eintragen (z.B. X7K9)\n" +
+        "3. 'Beitreten' klicken - fertig!\n" +
         "\n" +
-        "Du musst NICHTS am Router einstellen -\n" +
-        "die Portfreigabe braucht nur der Host.\n" +
+        "Du musst nichts weiter einstellen - keine IP, kein Router.\n" +
         "\n" +
         "KOMMST DU NICHT REIN?\n" +
-        "- IP und Code Buchstabe für Buchstabe prüfen\n" +
+        "- Code Buchstabe für Buchstabe prüfen\n" +
         "- Der Host muss die Runde schon erstellt haben\n" +
-        "- Übers Internet: Der Host muss Port 7777 (UDP)\n" +
-        "    freigegeben haben (die Anleitung hat er im Spiel)\n" +
-        "- Notlösung: Alle installieren das kostenlose\n" +
-        "    'Tailscale' - dann geht es wie im gleichen WLAN.";
+        "- Internetverbindung prüfen (Photon braucht eine Verbindung\n" +
+        "    zum Server, auch im gleichen WLAN)";
 }
 
 /// <summary>
 /// Komplette FARBMIMIK-UI, wird zur Laufzeit selbst aufgebaut:
-/// - Hauptmenue: "Server starten" / "Code eingeben"
-/// - Beitreten: IP + Room-Code eingeben
-/// - Lobby: Room-Code gross, Spielerliste (max 7), Start-Button NUR fuer den Host
+/// - Hauptmenue: "Runde erstellen" / "Runde beitreten" (Code eingeben)
+/// - Lobby: Code gross, Spielerliste (max 7), Start-Button NUR fuer den Host
 /// - Spiel-HUD: Phase + Timer + Sucher-Anzeige
-/// Gehoert auf dasselbe GameObject "Netzwerk" wie der LobbyManager.
+/// Gehoert auf dasselbe GameObject "Netzwerk" wie der PhotonRoomManager.
 /// </summary>
 public class LobbyUI : MonoBehaviour
 {
     Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
-    Text hilfeInhaltText, beitretenStatusText, ipHinweisText;
-    InputField freundNameFeld;
-    GameObject freundeReihe;
+    Text hilfeInhaltText, beitretenStatusText;
     GameObject sucherWartePanel;
     Text sucherWarteText;
     RawImage hintergrundBild;
     Image weisserSchleier;
-    bool verbindungLief, warVollVerbunden;
-    InputField ipFeld, codeFeld;
-    Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText;
+    string zuletztGezeigterFehler = "";
+    InputField codeFeld;
+    Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText, platzierungenText;
     GameObject startButton, nochmalButton, kopierButton;
 
     static readonly Color Neon = new Color(0.1f, 0.95f, 0.95f);
 
-    string oeffentlicheIP = "wird geladen...";
     float kopiertAnzeige;
 
     void Start()
     {
         schrift = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+        // FARBMIMIK braucht einen GamePhaseManager - falls keiner in der Szene
+        // liegt, hier automatisch erzeugen (spart einen manuellen Einbau-Schritt)
+        if (GamePhaseManager.Instance == null)
+            new GameObject("GamePhaseManager").AddComponent<GamePhaseManager>();
+
         BaueUI();
-        StartCoroutine(HoleOeffentlicheIP());
 
         // Kam der Spieler ueber "FARBMIMIK HOSTEN" aus dem anderen Modus?
         // Dann die Runde automatisch erstellen - er landet direkt in der Lobby.
@@ -179,26 +104,13 @@ public class LobbyUI : MonoBehaviour
         {
             PlayerPrefs.SetInt("NeonCatch_AutoHost", 0);
             if (Resources.Load<GameObject>("Spieler") != null)
-                NetworkManager.singleton.StartHost();
-        }
-    }
-
-    // Oeffentliche IP von api.ipify.org holen (fuer Freunde uebers Internet)
-    IEnumerator HoleOeffentlicheIP()
-    {
-        using (UnityWebRequest anfrage = UnityWebRequest.Get("https://api.ipify.org"))
-        {
-            anfrage.timeout = 5;
-            yield return anfrage.SendWebRequest();
-            oeffentlicheIP = anfrage.result == UnityWebRequest.Result.Success
-                ? anfrage.downloadHandler.text.Trim()
-                : "nicht ermittelbar";
+                PhotonRoomManager.Instanz.ErstelleRaum("farbmimik", "Spieler", 7);
         }
     }
 
     void Update()
     {
-        bool verbunden = NetworkClient.active;
+        bool verbunden = PhotonNetwork.InRoom;
         SpielPhase phase = GamePhaseManager.Instance != null
             ? GamePhaseManager.Instance.phase
             : SpielPhase.Lobby;
@@ -208,25 +120,17 @@ public class LobbyUI : MonoBehaviour
         if (hintergrundBild != null) hintergrundBild.enabled = bildSichtbar;
         if (weisserSchleier != null) weisserSchleier.enabled = bildSichtbar;
 
-        // Fehlgeschlagener Beitritts-Versuch? (falsche IP oder falscher Code)
-        if (NetworkClient.active)
+        // Fehlgeschlagener Beitritts-/Erstellungs-Versuch? (z.B. falscher Code)
+        if (!verbunden && PhotonRoomManager.FehlerText != "" &&
+            PhotonRoomManager.FehlerText != zuletztGezeigterFehler)
         {
-            verbindungLief = true;
-            if (NetworkClient.isConnected && NetworkClient.localPlayer != null)
-                warVollVerbunden = true;
+            zuletztGezeigterFehler = PhotonRoomManager.FehlerText;
+            hauptPanel.SetActive(false);
+            hilfePanel.SetActive(false);
+            beitretenPanel.SetActive(true);
+            beitretenStatusText.text = PhotonRoomManager.FehlerText;
         }
-        else if (verbindungLief)
-        {
-            verbindungLief = false;
-            if (!warVollVerbunden)
-            {
-                hauptPanel.SetActive(false);
-                hilfePanel.SetActive(false);
-                beitretenPanel.SetActive(true);
-                beitretenStatusText.text = "Das ist nicht korrekt!\nIP oder Room-Code prüfen und nochmal versuchen.";
-            }
-            warVollVerbunden = false;
-        }
+        if (verbunden) zuletztGezeigterFehler = "";
 
         hauptPanel.SetActive(!verbunden && !beitretenPanel.activeSelf && !hilfePanel.activeSelf);
         if (verbunden && beitretenPanel.activeSelf)
@@ -241,20 +145,29 @@ public class LobbyUI : MonoBehaviour
         if (hudPanel.activeSelf)
             AktualisiereHud(phase);
         if (endePanel.activeSelf)
-            nochmalButton.SetActive(NetworkServer.active);
+        {
+            nochmalButton.SetActive(PhotonNetwork.IsMasterClient);
+            AktualisiereEnde();
+        }
 
         // Schwarzer Wartebildschirm: nur fuer den Sucher selbst, waehrend
         // die Vorbereitungszeit laeuft (Sucher noch nicht auf der Map)
         bool binSucherUndWartet = false;
         if (verbunden && phase == SpielPhase.Suchen && GamePhaseManager.Instance != null && !GamePhaseManager.Instance.sucherAktiv)
         {
-            var lokal = NetworkClient.localPlayer;
-            if (lokal != null && GamePhaseManager.Instance.IstSucher(lokal))
+            var lokal = LokalerSpieler();
+            if (lokal != null && GamePhaseManager.Instance.IstSucher(lokal.photonView.ViewID))
                 binSucherUndWartet = true;
         }
         sucherWartePanel.SetActive(binSucherUndWartet);
         if (binSucherUndWartet)
             sucherWarteText.text = "DU BIST DER SUCHER\n\nWarte...\nSpawn in " + GamePhaseManager.Instance.sucherSpawnRest + "s";
+    }
+
+    static SelfPaintSystem LokalerSpieler()
+    {
+        return FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
+               .FirstOrDefault(s => s.photonView.IsMine && !s.istBot);
     }
 
     // ---------- Anzeigen aktualisieren ----------
@@ -263,37 +176,27 @@ public class LobbyUI : MonoBehaviour
     {
         if (kopiertAnzeige > 0f) kopiertAnzeige -= Time.deltaTime;
 
-        if (NetworkServer.active)
-        {
-            lobbyCodeText.text = "BEITRITTS-CODE: " + LobbyManager.RoomCode;
-            ipHinweisText.text = "Beim ERSTEN Mal auch deine IP mitschicken (danach haben Freunde sie gespeichert):\n" +
-                                 "WLAN: " + LokaleIP() + "   |   Internet: " + oeffentlicheIP;
-            kopierButton.SetActive(true);
-            var knopfText = kopierButton.GetComponentInChildren<Text>();
-            if (knopfText != null)
-                knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "CODE KOPIEREN";
-        }
-        else
-        {
-            lobbyCodeText.text = "Verbunden - warte auf den Host...";
-            ipHinweisText.text = "";
-            kopierButton.SetActive(false);
-        }
+        lobbyCodeText.text = "BEITRITTS-CODE: " + PhotonRoomManager.RoomCode;
+        var knopfText = kopierButton.GetComponentInChildren<Text>();
+        if (knopfText != null)
+            knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "CODE KOPIEREN";
 
         var spieler = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
-                      .OrderBy(s => s.spielerNummer).ToArray();
+                      .OrderBy(s => s.istBot ? int.MaxValue : (s.photonView.Owner != null ? s.photonView.Owner.ActorNumber : 0))
+                      .ToArray();
 
         string liste = "Spieler (" + spieler.Length + "/7):\n";
         foreach (var s in spieler)
         {
-            liste += s.spielerName != "" ? s.spielerName : "Spieler " + s.spielerNummer;
-            if (s.spielerNummer == 1) liste += " (Host)";
-            if (s.isLocalPlayer) liste += "  <- DU";
+            bool istHost = !s.istBot && s.photonView.Owner != null && s.photonView.Owner.IsMasterClient;
+            liste += (s.spielerName != "" ? s.spielerName : "Spieler");
+            if (istHost) liste += " (Host)";
+            if (s.photonView.IsMine && !s.istBot) liste += "  <- DU";
             liste += "\n";
         }
         spielerListeText.text = liste;
 
-        startButton.SetActive(NetworkServer.active);
+        startButton.SetActive(PhotonNetwork.IsMasterClient);
     }
 
     void AktualisiereHud(SpielPhase phase)
@@ -310,8 +213,8 @@ public class LobbyUI : MonoBehaviour
         {
             hudText.text = "SUCHEN & FREEZE   " + zeit;
 
-            var lokal = NetworkClient.localPlayer;
-            if (lokal != null && GamePhaseManager.Instance.IstSucher(lokal))
+            var lokal = LokalerSpieler();
+            if (lokal != null && GamePhaseManager.Instance.IstSucher(lokal.photonView.ViewID))
             {
                 sucherText.text = "DU BIST DER SUCHER! Finde die anderen!";
                 sucherText.color = Color.yellow;
@@ -319,24 +222,39 @@ public class LobbyUI : MonoBehaviour
             else
             {
                 var sucher = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
-                    .FirstOrDefault(s => s.netId == GamePhaseManager.Instance.sucherNetId);
-                string name = sucher != null ? "Spieler " + sucher.spielerNummer : "?";
+                    .FirstOrDefault(s => s.photonView.ViewID == GamePhaseManager.Instance.sucherViewId);
+                string name = sucher != null && sucher.spielerName != "" ? sucher.spielerName : "?";
                 sucherText.text = "Sucher: " + name + "  -  NICHT BEWEGEN!";
                 sucherText.color = Neon;
             }
         }
     }
 
-    static string LokaleIP()
+    void AktualisiereEnde()
     {
-        try
+        var alle = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
+                   .Where(s => s.platz > 0)
+                   .OrderBy(s => s.platz)
+                   .ToArray();
+
+        if (alle.Length == 0)
         {
-            foreach (var ip in Dns.GetHostAddresses(Dns.GetHostName()))
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                    return ip.ToString();
+            platzierungenText.text = "";
+            return;
         }
-        catch { }
-        return "unbekannt";
+
+        bool sucherHatGewonnen = alle[0].photonView.ViewID == GamePhaseManager.Instance.sucherViewId;
+        endeText.text = sucherHatGewonnen ? "SUCHER HAT GEWONNEN!" : "NICHT ALLE GEFUNDEN!";
+
+        string liste = "";
+        foreach (var s in alle)
+        {
+            string name = s.spielerName != "" ? s.spielerName : "Bot";
+            bool istSucher = s.photonView.ViewID == GamePhaseManager.Instance.sucherViewId;
+            liste += s.platz + ". Platz: " + name + (istSucher ? " (Sucher)" : "") +
+                     (s.photonView.IsMine && !s.istBot ? "  <- DU" : "") + "\n";
+        }
+        platzierungenText.text = liste;
     }
 
     // ---------- UI-Aufbau ----------
@@ -410,7 +328,7 @@ public class LobbyUI : MonoBehaviour
                            "Danach hier nochmal auf 'Runde erstellen' klicken.");
                 return;
             }
-            NetworkManager.singleton.StartHost();
+            PhotonRoomManager.Instanz.ErstelleRaum("farbmimik", "Spieler", 7);
             ZeigeHilfe(NetzwerkHilfe.HostAnleitung);   // zeigt sofort, was der Host machen muss
         });
         Knopf(hauptPanel.transform, "Runde beitreten", new Vector2(0, -45), () =>
@@ -418,7 +336,6 @@ public class LobbyUI : MonoBehaviour
             hauptPanel.SetActive(false);
             beitretenPanel.SetActive(true);
             beitretenStatusText.text = "";
-            BaueFreundeKnoepfe();
             ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung);   // zeigt sofort, was der Beitretende machen muss
         });
         Knopf(hauptPanel.transform, "Anderer Modus: NEON BLASTER", new Vector2(0, -110), () =>
@@ -433,45 +350,22 @@ public class LobbyUI : MonoBehaviour
         });
 
         // ---------- Beitreten ----------
-        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 580);
-        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 250), 30, Neon);
-        beitretenStatusText = Text(beitretenPanel.transform, "", new Vector2(0, 210), 16, new Color(1f, 0.35f, 0.3f));
+        beitretenPanel = Panel(canvas.transform, "BeitretenPanel", 420, 360);
+        Text(beitretenPanel.transform, "RUNDE BEITRETEN", new Vector2(0, 145), 30, Neon);
+        beitretenStatusText = Text(beitretenPanel.transform, "", new Vector2(0, 100), 16, new Color(1f, 0.35f, 0.3f));
         beitretenStatusText.rectTransform.sizeDelta = new Vector2(400, 45);
 
-        // Gespeicherte Freunde: anklicken fuellt die IP automatisch aus
-        Text(beitretenPanel.transform, "Mit wem spielen? (Klick = IP wird eingefügt)", new Vector2(0, 172), 15, Color.white);
-        freundeReihe = new GameObject("FreundeReihe");
-        freundeReihe.transform.SetParent(beitretenPanel.transform, false);
-        freundeReihe.AddComponent<RectTransform>().anchoredPosition = new Vector2(0, 135);
+        Text(beitretenPanel.transform, "Beitritts-Code:", new Vector2(0, 45), 18, Color.white);
+        codeFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, 10), "z.B. X7K9");
 
-        Text(beitretenPanel.transform, "IP des Hosts:", new Vector2(0, 95), 18, Color.white);
-        ipFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, 62), "z.B. 192.168.1.20");
-        Text(beitretenPanel.transform, "Beitritts-Code:", new Vector2(0, 22), 18, Color.white);
-        codeFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, -12), "z.B. X7K9");
-
-        Text(beitretenPanel.transform, "Zum Merken - Name des Freundes:", new Vector2(0, -52), 15, Color.white);
-        freundNameFeld = Eingabefeld(beitretenPanel.transform, new Vector2(0, -85), "z.B. Daniel");
-
-        Knopf(beitretenPanel.transform, "Beitreten", new Vector2(0, -140), () =>
+        Knopf(beitretenPanel.transform, "Beitreten", new Vector2(0, -55), () =>
         {
-            string ip = ipFeld.text.Trim();
-            if (ip == "") ip = "localhost";
-
-            // Freund merken: beim naechsten Mal reicht ein Klick auf den Namen
-            if (freundNameFeld.text.Trim() != "")
-            {
-                FreundeListe.Speichere(freundNameFeld.text, ip);
-                BaueFreundeKnoepfe();
-            }
-
-            LobbyManager.EingegebenerCode = codeFeld.text.Trim().ToUpper();
-            NetworkManager.singleton.networkAddress = ip;
-            NetworkManager.singleton.StartClient();
+            PhotonRoomManager.Instanz.TretRaumBei(codeFeld.text, "farbmimik", "Spieler");
         });
         var beitretenHilfe = Knopf(beitretenPanel.transform, "Hilfe: Was muss ich machen?",
-            new Vector2(0, -196), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
+            new Vector2(0, -110), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
         beitretenHilfe.GetComponentInChildren<Text>().color = new Color(1f, 0.7f, 0.2f);
-        Knopf(beitretenPanel.transform, "Zurück", new Vector2(0, -250), () =>
+        Knopf(beitretenPanel.transform, "Zurück", new Vector2(0, -165), () =>
         {
             beitretenPanel.SetActive(false);
             beitretenStatusText.text = "";
@@ -480,43 +374,34 @@ public class LobbyUI : MonoBehaviour
         beitretenPanel.SetActive(false);
 
         // ---------- Lobby ----------
-        lobbyPanel = Panel(canvas.transform, "LobbyPanel", 520, 600);
-        lobbyCodeText = Text(lobbyPanel.transform, "", new Vector2(0, 250), 28, Neon);
+        lobbyPanel = Panel(canvas.transform, "LobbyPanel", 520, 560);
+        lobbyCodeText = Text(lobbyPanel.transform, "", new Vector2(0, 230), 28, Neon);
         lobbyCodeText.rectTransform.sizeDelta = new Vector2(480, 45);
 
-        kopierButton = Knopf(lobbyPanel.transform, "CODE KOPIEREN", new Vector2(0, 195), () =>
+        kopierButton = Knopf(lobbyPanel.transform, "CODE KOPIEREN", new Vector2(0, 175), () =>
         {
             GUIUtility.systemCopyBuffer =
-                "Beitritts-Code: " + LobbyManager.RoomCode +
+                "Beitritts-Code: " + PhotonRoomManager.RoomCode +
                 " - Spiel FARBMIMIK starten, 'Runde beitreten' klicken und den Code eingeben!";
             kopiertAnzeige = 2f;
         }).gameObject;
 
-        ipHinweisText = Text(lobbyPanel.transform, "", new Vector2(0, 140), 14, new Color(0.85f, 0.85f, 0.85f));
-        ipHinweisText.rectTransform.sizeDelta = new Vector2(490, 45);
-
-        spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 30), 20, Color.white);
+        spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 60), 20, Color.white);
         spielerListeText.alignment = TextAnchor.UpperCenter;
         spielerListeText.rectTransform.sizeDelta = new Vector2(460, 145);
 
         // Kurze Spielerklaerung (2 Saetze)
-        var erklaerung = Text(lobbyPanel.transform, "", new Vector2(0, -115), 15, new Color(0.85f, 0.85f, 0.85f));
+        var erklaerung = Text(lobbyPanel.transform, "", new Vector2(0, -75), 15, new Color(0.85f, 0.85f, 0.85f));
         erklaerung.text = "So geht's: 90 Sekunden Farbe mischen (Taste E, 3x wischen) und verstecken.\n" +
-                          "Danach sucht ein Sucher 30 Sekunden - wer sich bewegt, blinkt neon!";
+                          "Danach sucht ein Sucher - wer sich bewegt, blinkt neon!";
         erklaerung.rectTransform.sizeDelta = new Vector2(490, 55);
 
-        var portKnopf = Knopf(lobbyPanel.transform, "Anleitung: So laden Freunde ein (Host)",
-            new Vector2(0, -160), () => ZeigeHilfe(NetzwerkHilfe.HostAnleitung));
-        var portKnopfText = portKnopf.GetComponentInChildren<Text>();
-        portKnopfText.color = new Color(1f, 0.7f, 0.2f);
-        portKnopfText.fontSize = 16;
-
-        startButton = Knopf(lobbyPanel.transform, "SPIEL STARTEN (nur Host)", new Vector2(0, -215), () =>
+        startButton = Knopf(lobbyPanel.transform, "SPIEL STARTEN (nur Host)", new Vector2(0, -195), () =>
         {
-            if (NetworkServer.active)
+            if (PhotonNetwork.IsMasterClient)
                 GamePhaseManager.Instance.StarteSpiel();
         }).gameObject;
-        Knopf(lobbyPanel.transform, "Verlassen", new Vector2(0, -275), TrenneVerbindung);
+        Knopf(lobbyPanel.transform, "Verlassen", new Vector2(0, -255), TrenneVerbindung);
         lobbyPanel.SetActive(false);
 
         // ---------- Spiel-HUD ----------
@@ -534,23 +419,26 @@ public class LobbyUI : MonoBehaviour
         hudPanel.SetActive(false);
 
         // ---------- Ende ----------
-        endePanel = Panel(canvas.transform, "EndePanel", 420, 300);
-        endeText = Text(endePanel.transform, "SPIEL VORBEI!", new Vector2(0, 90), 36, Neon);
-        nochmalButton = Knopf(endePanel.transform, "Zurück zur Lobby", new Vector2(0, 0), () =>
+        endePanel = Panel(canvas.transform, "EndePanel", 460, 460);
+        endeText = Text(endePanel.transform, "SPIEL VORBEI!", new Vector2(0, 195), 32, Neon);
+        platzierungenText = Text(endePanel.transform, "", new Vector2(0, 60), 20, Color.white);
+        platzierungenText.alignment = TextAnchor.UpperCenter;
+        platzierungenText.rectTransform.sizeDelta = new Vector2(400, 220);
+        nochmalButton = Knopf(endePanel.transform, "Zurück zur Lobby", new Vector2(0, -160), () =>
         {
-            if (NetworkServer.active)
+            if (PhotonNetwork.IsMasterClient)
                 GamePhaseManager.Instance.ZurueckZurLobby();
         }).gameObject;
-        Knopf(endePanel.transform, "Verlassen", new Vector2(0, -70), TrenneVerbindung);
+        Knopf(endePanel.transform, "Verlassen", new Vector2(0, -220), TrenneVerbindung);
         endePanel.SetActive(false);
 
         // ---------- Hilfe: Beschreibungen auf leicht weissem Grund ----------
-        hilfePanel = Panel(canvas.transform, "HilfePanel", 620, 680);
+        hilfePanel = Panel(canvas.transform, "HilfePanel", 560, 420);
         hilfePanel.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.88f);
-        hilfeInhaltText = Text(hilfePanel.transform, "", new Vector2(0, 20), 17, new Color(0.1f, 0.1f, 0.12f));
+        hilfeInhaltText = Text(hilfePanel.transform, "", new Vector2(0, 10), 17, new Color(0.1f, 0.1f, 0.12f));
         hilfeInhaltText.alignment = TextAnchor.UpperCenter;
-        hilfeInhaltText.rectTransform.sizeDelta = new Vector2(580, 580);
-        Knopf(hilfePanel.transform, "Zurück", new Vector2(0, -300), () => hilfePanel.SetActive(false));
+        hilfeInhaltText.rectTransform.sizeDelta = new Vector2(520, 320);
+        Knopf(hilfePanel.transform, "Zurück", new Vector2(0, -180), () => hilfePanel.SetActive(false));
         hilfePanel.SetActive(false);
 
         // ---------- Sucher-Wartebildschirm (voller schwarzer Bildschirm) ----------
@@ -573,38 +461,9 @@ public class LobbyUI : MonoBehaviour
         hilfePanel.SetActive(true);
     }
 
-    // Baut die Reihe der gespeicherten Freunde neu auf (max. 4 sichtbar).
-    // Klick auf einen Namen fuellt die IP automatisch aus.
-    void BaueFreundeKnoepfe()
-    {
-        foreach (Transform kind in freundeReihe.transform)
-            Destroy(kind.gameObject);
-
-        var freunde = FreundeListe.Alle();
-        int anzahl = Mathf.Min(freunde.Count, 4);
-        for (int i = 0; i < anzahl; i++)
-        {
-            string name = freunde[i][0];
-            string ip = freunde[i][1];
-            float x = (i - (anzahl - 1) * 0.5f) * 96f;
-            var knopf = Knopf(freundeReihe.transform, name, new Vector2(x, 0), () =>
-            {
-                ipFeld.text = ip;
-                if (freundNameFeld != null) freundNameFeld.text = "";
-            });
-            knopf.GetComponent<Image>().rectTransform.sizeDelta = new Vector2(90, 36);
-            var text = knopf.GetComponentInChildren<Text>();
-            text.rectTransform.sizeDelta = new Vector2(82, 32);
-            text.color = Neon;
-        }
-    }
-
     void TrenneVerbindung()
     {
-        if (NetworkServer.active && NetworkClient.isConnected)
-            NetworkManager.singleton.StopHost();
-        else if (NetworkClient.active)
-            NetworkManager.singleton.StopClient();
+        PhotonRoomManager.Instanz.VerlasseRaum();
     }
 
     // ---------- Bausteine ----------

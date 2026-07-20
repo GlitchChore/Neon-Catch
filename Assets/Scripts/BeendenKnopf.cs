@@ -1,4 +1,4 @@
-using Mirror;
+using Photon.Pun;
 using UnityEngine;
 
 namespace NeonCatch
@@ -64,14 +64,9 @@ namespace NeonCatch
 
         void Beende()
         {
-            // Laufende Online-Verbindung sauber trennen
-            if (NetworkManager.singleton != null)
-            {
-                if (NetworkServer.active && NetworkClient.isConnected)
-                    NetworkManager.singleton.StopHost();
-                else if (NetworkClient.active)
-                    NetworkManager.singleton.StopClient();
-            }
+            // Laufende Online-Verbindung sauber trennen (Photon)
+            if (PhotonNetwork.InRoom)
+                PhotonNetwork.LeaveRoom();
 
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;   // im Editor: Play-Modus stoppen
