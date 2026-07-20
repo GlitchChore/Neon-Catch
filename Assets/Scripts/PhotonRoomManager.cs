@@ -74,6 +74,25 @@ public class PhotonRoomManager : MonoBehaviourPunCallbacks
         StartCoroutine(WartetAufVerbindungDann(HosteJetzt));
     }
 
+    /// <summary>
+    /// Solo gegen Bots - OHNE Server, OHNE Code. Nutzt Photons Offline-Modus:
+    /// alle RPCs, Raum-Properties und InstantiateRoomObject laufen komplett
+    /// lokal, du bist automatisch MasterClient. Fuer FARBMIMIK gegen Bots.
+    /// </summary>
+    public void StarteSolo(string modus, string prefabName)
+    {
+        FehlerText = "";
+        wartetAufModus = modus;
+        wartetAufPrefab = prefabName;
+        wartetAufMaxSpieler = 1;
+        RoomCode = "SOLO";
+        PhotonNetwork.OfflineMode = true;   // ab jetzt alles lokal, kein Server
+        PhotonNetwork.CreateRoom("SOLO");   // offline: OnJoinedRoom feuert sofort
+    }
+
+    /// <summary>Laeuft gerade eine Solo-Runde (Offline-Modus)?</summary>
+    public static bool IstSolo => PhotonNetwork.OfflineMode;
+
     /// <summary>Bestehendem Raum per Code beitreten.</summary>
     public void TretRaumBei(string code, string modus, string prefabName)
     {
@@ -171,6 +190,13 @@ public class PhotonRoomManager : MonoBehaviourPunCallbacks
     /// Photon waehlt bei Bedarf automatisch einen neuen MasterClient).</summary>
     public void VerlasseRaum()
     {
+        RoomCode = "";
+        if (PhotonNetwork.OfflineMode)
+        {
+            // Solo beenden: Offline-Modus aus -> danach wieder online-bereit
+            PhotonNetwork.OfflineMode = false;
+            return;
+        }
         if (PhotonNetwork.InRoom)
             PhotonNetwork.LeaveRoom();
     }
@@ -178,6 +204,10 @@ public class PhotonRoomManager : MonoBehaviourPunCallbacks
     public override void OnLeftRoom()
     {
         RoomCode = "";
+        // Nach einer Solo-Runde (Offline-Modus war an) wieder mit dem Server
+        // verbinden, damit spaeteres Online-Spielen sofort geht
+        if (!PhotonNetwork.OfflineMode && !PhotonNetwork.IsConnected)
+            PhotonNetwork.ConnectUsingSettings();
     }
 
     static string GeneriereCode()

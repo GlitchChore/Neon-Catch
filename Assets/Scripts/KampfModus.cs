@@ -450,9 +450,9 @@ namespace NeonCatch
                     UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
                 if (Application.CanStreamedLevelBeLoaded("Farbmimik"))
                 {
-                    // Nach dem Szenenwechsel startet die FARBMIMIK-Lobby von selbst
-                    // (solo: man spielt einfach allein weiter, ohne auf Freunde zu warten)
-                    PlayerPrefs.SetInt("NeonCatch_AutoHost", 1);
+                    // Nach dem Szenenwechsel startet die FARBMIMIK-Lobby von selbst:
+                    // solo = offline gegen Bots (KEIN Code), sonst = online hosten
+                    PlayerPrefs.SetInt(solo ? "NeonCatch_AutoSolo" : "NeonCatch_AutoHost", 1);
                     UnityEngine.SceneManagement.SceneManager.LoadScene("Farbmimik");
                 }
                 else

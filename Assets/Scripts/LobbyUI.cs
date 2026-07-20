@@ -98,14 +98,31 @@ public class LobbyUI : MonoBehaviour
 
         BaueUI();
 
-        // Kam der Spieler ueber "FARBMIMIK HOSTEN" aus dem anderen Modus?
-        // Dann die Runde automatisch erstellen - er landet direkt in der Lobby.
-        if (PlayerPrefs.GetInt("NeonCatch_AutoHost", 0) == 1)
+        // Kam der Spieler aus dem anderen Modus (NEON-BLASTER-Menue)?
+        // AutoSolo = Solo gegen Bots (offline), AutoHost = Online-Runde.
+        if (PlayerPrefs.GetInt("NeonCatch_AutoSolo", 0) == 1)
+        {
+            PlayerPrefs.SetInt("NeonCatch_AutoSolo", 0);
+            StarteSolo();
+        }
+        else if (PlayerPrefs.GetInt("NeonCatch_AutoHost", 0) == 1)
         {
             PlayerPrefs.SetInt("NeonCatch_AutoHost", 0);
             if (Resources.Load<GameObject>("Spieler") != null)
                 PhotonRoomManager.Instanz.ErstelleRaum("farbmimik", "Spieler", 7);
         }
+    }
+
+    void StarteSolo()
+    {
+        if (Resources.Load<GameObject>("Spieler") == null)
+        {
+            ZeigeHilfe("SPIELER-PREFAB FEHLT!\n\nIn Unity einmal neu kompilieren lassen\n" +
+                       "(das Prefab wird automatisch erstellt) oder im Menue\n" +
+                       "Tools > FARBMIMIK > Netzwerk-Prefabs erstellen klicken.");
+            return;
+        }
+        PhotonRoomManager.Instanz.StarteSolo("farbmimik", "Spieler");
     }
 
     void Update()
@@ -176,10 +193,20 @@ public class LobbyUI : MonoBehaviour
     {
         if (kopiertAnzeige > 0f) kopiertAnzeige -= Time.deltaTime;
 
-        lobbyCodeText.text = "BEITRITTS-CODE: " + PhotonRoomManager.RoomCode;
-        var knopfText = kopierButton.GetComponentInChildren<Text>();
-        if (knopfText != null)
-            knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "CODE KOPIEREN";
+        // Solo (offline): kein Code, kein Kopieren-Knopf
+        if (PhotonRoomManager.IstSolo)
+        {
+            lobbyCodeText.text = "SOLO gegen Bots";
+            kopierButton.SetActive(false);
+        }
+        else
+        {
+            lobbyCodeText.text = "BEITRITTS-CODE: " + PhotonRoomManager.RoomCode;
+            kopierButton.SetActive(true);
+            var knopfText = kopierButton.GetComponentInChildren<Text>();
+            if (knopfText != null)
+                knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "CODE KOPIEREN";
+        }
 
         var spieler = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
                       .OrderBy(s => s.istBot ? int.MaxValue : (s.photonView.Owner != null ? s.photonView.Owner.ActorNumber : 0))
@@ -307,17 +334,20 @@ public class LobbyUI : MonoBehaviour
         }
 
         // ---------- Hauptmenue ----------
-        hauptPanel = Panel(canvas.transform, "HauptPanel", 420, 470);
-        Text(hauptPanel.transform, "FARBMIMIK", new Vector2(0, 190), 42, Neon);
-        Text(hauptPanel.transform, "Verstecken + Anmalen", new Vector2(0, 150), 18, Color.white);
+        hauptPanel = Panel(canvas.transform, "HauptPanel", 420, 560);
+        Text(hauptPanel.transform, "FARBMIMIK", new Vector2(0, 245), 42, Neon);
+        Text(hauptPanel.transform, "Verstecken + Anmalen", new Vector2(0, 205), 18, Color.white);
 
         // Profil: einfacher Name, wird in der Lobby und im Spiel angezeigt
-        Text(hauptPanel.transform, "Dein Name:", new Vector2(0, 115), 16, Color.white);
-        var nameFeld = Eingabefeld(hauptPanel.transform, new Vector2(0, 85), "z.B. Robi");
+        Text(hauptPanel.transform, "Dein Name:", new Vector2(0, 170), 16, Color.white);
+        var nameFeld = Eingabefeld(hauptPanel.transform, new Vector2(0, 140), "z.B. Robi");
         nameFeld.text = PlayerPrefs.GetString("NeonCatch_SpielerName", "");
         nameFeld.onValueChanged.AddListener(wert => SpielerProfil.Name = wert);
 
-        Knopf(hauptPanel.transform, "Runde erstellen", new Vector2(0, 20), () =>
+        // Solo gegen Bots - OHNE Code, laeuft offline
+        Knopf(hauptPanel.transform, "Solo gegen Bots", new Vector2(0, 82), StarteSolo);
+
+        Knopf(hauptPanel.transform, "Online: Runde erstellen", new Vector2(0, 24), () =>
         {
             // Ohne Spieler-Prefab wuerde die Runde leer starten - klarer Hinweis statt Chaos
             if (Resources.Load<GameObject>("Spieler") == null)
@@ -331,14 +361,14 @@ public class LobbyUI : MonoBehaviour
             PhotonRoomManager.Instanz.ErstelleRaum("farbmimik", "Spieler", 7);
             ZeigeHilfe(NetzwerkHilfe.HostAnleitung);   // zeigt sofort, was der Host machen muss
         });
-        Knopf(hauptPanel.transform, "Runde beitreten", new Vector2(0, -45), () =>
+        Knopf(hauptPanel.transform, "Online: Runde beitreten", new Vector2(0, -34), () =>
         {
             hauptPanel.SetActive(false);
             beitretenPanel.SetActive(true);
             beitretenStatusText.text = "";
             ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung);   // zeigt sofort, was der Beitretende machen muss
         });
-        Knopf(hauptPanel.transform, "Anderer Modus: NEON BLASTER", new Vector2(0, -110), () =>
+        Knopf(hauptPanel.transform, "Anderer Modus: NEON BLASTER", new Vector2(0, -92), () =>
         {
             string ziel = PlayerPrefs.GetString("NeonCatch_HauptSzene", "SampleScene");
             if (Application.CanStreamedLevelBeLoaded(ziel))
