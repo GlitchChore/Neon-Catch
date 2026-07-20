@@ -182,8 +182,53 @@ public class PhotonRoomManager : MonoBehaviourPunCallbacks
             return;
         }
 
-        Vector3 pos = new Vector3(Random.Range(-2f, 2f), 0f, Random.Range(-2f, 2f));
-        PhotonNetwork.Instantiate(wartetAufPrefab, pos, Quaternion.identity);
+        // Referenz-Spawn: die vorhandene Solo-Figur (Tag "Player") steht bereits
+        // korrekt am Boden. Frueher spawnten Online-Spieler bei (0,0,0) - das
+        // liegt oft IM Dach/in der Geometrie, dann steckt der CharacterController
+        // fest und man kann sich nicht bewegen.
+        Vector3 basis = FindeSpawnBasis();
+        float jx = Random.Range(-2.5f, 2.5f);
+        Vector3 jitter = new Vector3(jx, 0f, Random.Range(-2.5f, 2.5f));
+
+        // Etwas ueber dem Boden erzeugen, dann exakt auf den Boden setzen
+        GameObject go = PhotonNetwork.Instantiate(wartetAufPrefab,
+            basis + jitter + Vector3.up * 2f, Quaternion.identity);
+        if (go == null) return;
+
+        var cc = go.GetComponent<CharacterController>();
+        if (cc != null)
+        {
+            // Fuss-Versatz = Unterkante der Kapsel relativ zum Pivot
+            float fussVersatz = cc.center.y - cc.height / 2f;
+            cc.enabled = false;   // CC deaktivieren, um sauber zu teleportieren
+            go.transform.position = new Vector3(basis.x + jitter.x,
+                basis.y - fussVersatz + 0.05f, basis.z + jitter.z);
+            cc.enabled = true;
+        }
+    }
+
+    // Bester bekannter Boden-Spawnpunkt: die Solo-Figur (Tag "Player") steht
+    // schon richtig; sonst die Burg-Mitte per Raycast auf den Boden; sonst 0.
+    static Vector3 FindeSpawnBasis()
+    {
+        GameObject player = GameObject.FindGameObjectWithTag("Player");
+        if (player != null)
+            return player.transform.position;
+
+        GameObject burg = GameObject.Find("Burg");
+        if (burg != null)
+        {
+            Vector3 c = burg.transform.position;
+            if (Physics.Raycast(c + Vector3.up * 100f, Vector3.down, out RaycastHit hit,
+                    300f, ~(1 << 4), QueryTriggerInteraction.Ignore))
+                return hit.point;
+            return c;
+        }
+
+        if (Physics.Raycast(Vector3.up * 100f, Vector3.down, out RaycastHit hit2,
+                300f, ~(1 << 4), QueryTriggerInteraction.Ignore))
+            return hit2.point;
+        return Vector3.zero;
     }
 
     /// <summary>Raum verlassen (Host oder Mitspieler - Photon behandelt beide gleich,
