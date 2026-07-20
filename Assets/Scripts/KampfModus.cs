@@ -270,6 +270,10 @@ namespace NeonCatch
 
         void Update()
         {
+            // Verbinde-Zustand beenden, sobald man im Raum ist oder ein Fehler kam
+            if (KampfOnline.Verbindet && (PhotonNetwork.InRoom || PhotonRoomManager.FehlerText != ""))
+                KampfOnline.Verbindet = false;
+
             // Waehrend einer Online-Runde uebernimmt KampfNetzwerk komplett -
             // aber ESC funktioniert IMMER als Notausgang zurueck ins Menue
             if (PhotonNetwork.InRoom)
@@ -518,6 +522,26 @@ namespace NeonCatch
 
         void OnGUI()
         {
+            // Waehrend des Verbindens NUR "Verbinde..." zeigen - kein Startmenue-Flackern
+            if (KampfOnline.Verbindet && !PhotonNetwork.InRoom)
+            {
+                if (knopfStil == null)
+                    knopfStil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, wordWrap = true };
+                float w = Screen.width, h = Screen.height;
+                var boxStil = new GUIStyle(GUI.skin.box) { fontStyle = FontStyle.Bold };
+                boxStil.fontSize = Mathf.RoundToInt(h * 0.03f);
+                GUI.Box(new Rect(w * 0.5f - w * 0.18f, h * 0.4f, w * 0.36f, h * 0.1f),
+                        "Verbinde mit dem Server ...", boxStil);
+                knopfStil.fontSize = Mathf.RoundToInt(h * 0.025f);
+                if (GUI.Button(new Rect(w * 0.5f - w * 0.09f, h * 0.52f, w * 0.18f, h * 0.06f),
+                        "ABBRECHEN", knopfStil))
+                {
+                    KampfOnline.Verlasse();
+                    KampfOnline.Verbindet = false;
+                }
+                return;
+            }
+
             // Online-HUD zeichnet KampfNetzwerk - aber solange KEIN eigener
             // Netzwerk-Spieler existiert (z.B. Verbindung klappt nicht),
             // gibt es hier einen sichtbaren Abbrechen-Knopf als Notausgang

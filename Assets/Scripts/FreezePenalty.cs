@@ -167,9 +167,10 @@ public class FreezePenalty : MonoBehaviourPun
         if (kamera == null)
             return;
 
-        Vector3 ziel = transform.position - transform.forward * 5f + Vector3.up * 3f;
+        // an die kleine Figur (~0.5 m) angepasst: naeher dran, niedriger
+        Vector3 ziel = transform.position - transform.forward * 2f + Vector3.up * 1f;
         kamera.transform.position = Vector3.Lerp(kamera.transform.position, ziel, 8f * Time.deltaTime);
-        kamera.transform.LookAt(transform.position + Vector3.up * 1.5f);
+        kamera.transform.LookAt(transform.position + Vector3.up * 0.35f);
     }
 
     [PunRPC]

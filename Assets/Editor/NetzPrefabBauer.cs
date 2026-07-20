@@ -82,21 +82,33 @@ public static class NetzPrefabBauer
         view.OwnershipTransfer = OwnershipOption.Fixed;
     }
 
-    // FARBMIMIK-Spieler: sichtbare Kapsel, malt sich selbst an, Freeze-Strafe
+    // Figur-Groesse wie die Solo-Figur (PlayerController): ~0.5 m hoch, schmal -
+    // passt durch Tueren. Frueher war die FARBMIMIK-Kapsel 2 m hoch und 1 m breit.
+    const float FigurHoehe = 0.5f;
+    const float FigurRadius = 0.12f;
+
+    // FARBMIMIK-Spieler: kleine sichtbare Kapsel (Kind), malt sich selbst an,
+    // Freeze-Strafe. Wurzel bleibt Skalierung 1, damit der CharacterController
+    // sauber bleibt; die sichtbare Kapsel ist ein kleines Kind-Objekt.
     static bool ErstelleFarbmimikSpieler()
     {
         if (Existiert("Spieler")) return false;
 
-        GameObject go = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        go.name = "Spieler";
-        Object.DestroyImmediate(go.GetComponent<CapsuleCollider>());
-
+        var go = new GameObject("Spieler");
         FuegeNetzwerkHinzu(go);
 
         var cc = go.AddComponent<CharacterController>();
-        cc.height = 2f;
-        cc.radius = 0.5f;
-        cc.center = Vector3.zero;   // Kapsel-Mesh hat den Pivot in der Mitte
+        cc.height = FigurHoehe;
+        cc.radius = FigurRadius;
+        cc.center = new Vector3(0f, FigurHoehe / 2f, 0f);
+
+        // sichtbare kleine Kapsel als Kind (Default-Kapsel ist 2 m hoch/1 m breit)
+        var figur = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        figur.name = "Figur";
+        Object.DestroyImmediate(figur.GetComponent<CapsuleCollider>());
+        figur.transform.SetParent(go.transform, false);
+        figur.transform.localScale = new Vector3(FigurRadius * 2f, FigurHoehe / 2f, FigurRadius * 2f);
+        figur.transform.localPosition = new Vector3(0f, FigurHoehe / 2f, 0f);
 
         go.AddComponent<SelfPaintSystem>();
         go.AddComponent<FreezePenalty>();
@@ -106,7 +118,8 @@ public static class NetzPrefabBauer
     }
 
     // Online-Kampf-Mensch: unsichtbarer Wurzel-Koerper (Ego-Perspektive),
-    // Mitspieler bekommen zur Laufzeit ein Synty-Modell angehaengt
+    // Mitspieler bekommen zur Laufzeit ein Synty-Modell angehaengt. Gleiche
+    // kleine Groesse wie die Solo-Figur, damit man durch Tueren passt.
     static bool ErstelleKampfSpieler()
     {
         if (Existiert("KampfSpieler")) return false;
@@ -115,9 +128,9 @@ public static class NetzPrefabBauer
         FuegeNetzwerkHinzu(go);
 
         var cc = go.AddComponent<CharacterController>();
-        cc.height = 1.7f;
-        cc.radius = 0.3f;
-        cc.center = new Vector3(0f, 0.85f, 0f);
+        cc.height = FigurHoehe;
+        cc.radius = FigurRadius;
+        cc.center = new Vector3(0f, FigurHoehe / 2f, 0f);
 
         go.AddComponent<NeonCatch.KampfNetzwerk>();
 

@@ -78,6 +78,8 @@ public class LobbyUI : MonoBehaviour
     Text sucherWarteText;
     RawImage hintergrundBild;
     Image weisserSchleier;
+    GameObject verbindePanel;
+    bool verbindetGerade;
     string zuletztGezeigterFehler = "";
     InputField codeFeld;
     Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText, platzierungenText;
@@ -149,7 +151,12 @@ public class LobbyUI : MonoBehaviour
         }
         if (verbunden) zuletztGezeigterFehler = "";
 
-        hauptPanel.SetActive(!verbunden && !beitretenPanel.activeSelf && !hilfePanel.activeSelf);
+        // Verbinde-Zustand beenden, sobald man im Raum ist oder ein Fehler kam
+        if (verbindetGerade && (verbunden || PhotonRoomManager.FehlerText != ""))
+            verbindetGerade = false;
+        verbindePanel.SetActive(verbindetGerade);
+
+        hauptPanel.SetActive(!verbunden && !verbindetGerade && !beitretenPanel.activeSelf && !hilfePanel.activeSelf);
         if (verbunden && beitretenPanel.activeSelf)
             beitretenPanel.SetActive(false);
 
@@ -358,8 +365,11 @@ public class LobbyUI : MonoBehaviour
                            "Danach hier nochmal auf 'Runde erstellen' klicken.");
                 return;
             }
+            // Direkt in den "Verbinde..."-Zustand - kein Startseiten-Flackern
+            // und kein Hilfe-Popup, man landet gleich auf dem Code-Bildschirm
+            verbindetGerade = true;
+            hauptPanel.SetActive(false);
             PhotonRoomManager.Instanz.ErstelleRaum("farbmimik", "Spieler", 7);
-            ZeigeHilfe(NetzwerkHilfe.HostAnleitung);   // zeigt sofort, was der Host machen muss
         });
         Knopf(hauptPanel.transform, "Online: Runde beitreten", new Vector2(0, -34), () =>
         {
@@ -390,6 +400,8 @@ public class LobbyUI : MonoBehaviour
 
         Knopf(beitretenPanel.transform, "Beitreten", new Vector2(0, -55), () =>
         {
+            verbindetGerade = true;
+            beitretenPanel.SetActive(false);
             PhotonRoomManager.Instanz.TretRaumBei(codeFeld.text, "farbmimik", "Spieler");
         });
         var beitretenHilfe = Knopf(beitretenPanel.transform, "Hilfe: Was muss ich machen?",
@@ -483,6 +495,12 @@ public class LobbyUI : MonoBehaviour
         sucherWarteText = Text(sucherWartePanel.transform, "", Vector2.zero, 34, Neon);
         sucherWarteText.rectTransform.sizeDelta = new Vector2(600, 200);
         sucherWartePanel.SetActive(false);
+
+        // ---------- Verbinde-Panel (kein Startseiten-Flackern beim Erstellen/Beitreten) ----------
+        verbindePanel = Panel(canvas.transform, "VerbindePanel", 420, 160);
+        Text(verbindePanel.transform, "Verbinde mit dem Server ...", new Vector2(0, 20), 24, Neon);
+        Text(verbindePanel.transform, "einen Moment bitte", new Vector2(0, -25), 16, Color.white);
+        verbindePanel.SetActive(false);
     }
 
     void ZeigeHilfe(string inhalt)
@@ -522,6 +540,12 @@ public class LobbyUI : MonoBehaviour
         text.verticalOverflow = VerticalWrapMode.Overflow;
         text.rectTransform.anchoredPosition = position;
         text.rectTransform.sizeDelta = new Vector2(400, 40);
+
+        // Kraeftiger dunkler Umriss: Schrift bleibt auf JEDEM Hintergrund
+        // scharf lesbar (auch wenn ein Button beim Drueberfahren hell wird)
+        var outline = go.AddComponent<Outline>();
+        outline.effectColor = new Color(0f, 0f, 0f, 0.95f);
+        outline.effectDistance = new Vector2(2f, -2f);
         return text;
     }
 

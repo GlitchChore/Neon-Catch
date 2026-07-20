@@ -24,10 +24,14 @@ namespace NeonCatch
         /// Plaetze werden beim Rundenstart mit Bots aufgefuellt.</summary>
         public static int ZielKaempfer = 5;
 
+        /// <summary>Verbindet gerade (fuer "Verbinde..."-Anzeige statt Menue-Flackern).</summary>
+        public static bool Verbindet;
+
         public static void Hoste(int bots)
         {
             if (!PruefePrefabs()) return;
             BotAnzahl = bots;
+            Verbindet = true;
             KampfManager.Sicherstellen();
             PhotonRoomManager.Instanz.ErstelleRaum("neonblaster", "KampfSpieler", 7);
         }
@@ -35,6 +39,7 @@ namespace NeonCatch
         public static void Trete(string code)
         {
             if (!PruefePrefabs()) return;
+            Verbindet = true;
             KampfManager.Sicherstellen();
             PhotonRoomManager.Instanz.TretRaumBei(code, "neonblaster", "KampfSpieler");
         }
@@ -330,7 +335,7 @@ namespace NeonCatch
 
             var kamGO = new GameObject("KampfNetz_Kamera") { tag = "MainCamera" };
             kamGO.transform.SetParent(transform, false);
-            kamGO.transform.localPosition = new Vector3(0f, 1.55f, 0f);
+            kamGO.transform.localPosition = new Vector3(0f, 0.46f, 0f);   // Augenhoehe der kleinen Figur
             eigeneKamera = kamGO.AddComponent<Camera>();
             kamGO.AddComponent<AudioListener>();
 
@@ -362,7 +367,8 @@ namespace NeonCatch
         {
             if (photonView.IsMine && !istBot) return;
 
-            float zielHoehe = istBot ? 0.75f : 1.55f;
+            // Mitspieler-Modell so klein wie die eigene Figur (passt durch Tueren)
+            float zielHoehe = istBot ? 0.6f : 0.5f;
             int nr = istBot ? botNummer : (Mathf.Max(1, photonView.OwnerActorNr) - 1) % 4 + 1;
             GameObject prefab = Resources.Load<GameObject>("KI/Bot_" + Mathf.Clamp(nr, 1, 4));
 
@@ -620,8 +626,8 @@ namespace NeonCatch
                 float d = Vector3.Distance(transform.position, k.transform.position);
                 if (d >= beste) continue;
 
-                Vector3 augen = transform.position + Vector3.up * 0.45f;
-                Vector3 punkt = k.transform.position + Vector3.up * 0.8f;
+                Vector3 augen = transform.position + Vector3.up * 0.35f;
+                Vector3 punkt = k.transform.position + Vector3.up * 0.35f;   // Mitte der kleinen Figur
                 if (Physics.Linecast(augen, punkt, out RaycastHit hit,
                         ~(1 << 4), QueryTriggerInteraction.Ignore) &&
                     hit.collider.GetComponentInParent<KampfNetzwerk>() != k)
@@ -649,8 +655,8 @@ namespace NeonCatch
                 if (Time.time >= naechsterSchuss)
                 {
                     naechsterSchuss = Time.time + botSchussPause * Random.Range(0.8f, 1.3f);
-                    Vector3 start = transform.position + Vector3.up * 0.45f;
-                    Vector3 richtung = (ziel.position + Vector3.up * 0.5f - start).normalized;
+                    Vector3 start = transform.position + Vector3.up * 0.35f;
+                    Vector3 richtung = (ziel.position + Vector3.up * 0.35f - start).normalized;
                     richtung = Quaternion.Euler(Random.Range(-botStreuung, botStreuung),
                                                 Random.Range(-botStreuung, botStreuung), 0f) * richtung;
                     Schiesse(start + richtung * 0.2f, richtung);
