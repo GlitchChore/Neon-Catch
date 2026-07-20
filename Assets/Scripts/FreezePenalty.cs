@@ -1,261 +1,137 @@
-using System.Collections;
 using Photon.Pun;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.Rendering;
-using UnityEngine.Rendering.Universal;
 
 /// <summary>
-/// Bewegung + Freeze-Strafe:
-/// - WASD-Bewegung (W/S vor und zurueck, A/D drehen) + einfache Verfolgerkamera
-/// - Der Sucher wartet die Vorbereitungszeit lang bewegungslos (schwarzer
-///   Bildschirm kommt aus LobbyUI), teleportiert dann automatisch zur
-///   Spawn-Position (Lichtsaeule) und kann erst ab da suchen
-/// - PHASE 2 (Suchen, erst NACHDEM der Sucher gespawnt ist): Wer NICHT
-///   Sucher ist und sich trotzdem bewegt, blinkt 2 Sekunden Neon-Cyan und
-///   ist dabei durch Waende hindurch sichtbar (Roentgen-Effekt) - fuer
-///   ALLE Spieler. Der Glow kommt ueber URP-Post-Processing (Bloom-Volume,
-///   automatisch erzeugt).
-/// Gehoert auf das Spieler-Prefab (zusammen mit PhotonView + PhotonTransformView).
+/// FARBMIMIK-Spielersteuerung - gleiche Ego-Steuerung wie NEON BLASTER
+/// (Maus schauen + WASD laufen), nur OHNE Pistole.
+///
+/// Freeze-Regeln:
+///  - Waehrend VERSTECKEN kann sich der SUCHER nicht bewegen (er sieht einen
+///    schwarzen Bildschirm mit Countdown, gezeichnet von LobbyUI).
+///  - Waehrend SUCHEN sind die VERSTECKTEN eingefroren (koennen sich nicht
+///    mehr bewegen), koennen aber weiter malen (SelfPaintSystem).
+///  - Sonst laeuft man frei.
+///
+/// Kein Aufleuchten-beim-Bewegen mehr. Gefangen wird ueber Beruehrung im
+/// 2-Meter-Radius (GamePhaseManager.PruefeFangen).
+/// Gehoert auf das Spieler-Prefab (mit PhotonView + PhotonTransformView).
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 [RequireComponent(typeof(PhotonView))]
 public class FreezePenalty : MonoBehaviourPun
 {
     [Header("Bewegung")]
-    public float tempo = 5f;
-    public float drehTempo = 140f;
-
-    [Header("Freeze")]
-    public float bewegungsToleranz = 0.15f;   // Meter, ab denen "bewegt" zaehlt
-    public float blinkDauer = 2f;
-
-    static readonly Color NeonCyan = new Color(0f, 1f, 1f);
-    static bool glowVolumeErzeugt;
+    public float tempo = 3.5f;
+    public float mausEmpfindlichkeit = 0.12f;
 
     CharacterController controller;
-    Renderer[] eigeneRenderer;
     SelfPaintSystem paint;
-    Vector3 freezePosition;
-    bool blinkt;
-    bool zumSpawnTeleportiert;
+    Camera eigeneKamera;
+    static GameObject soloSpieler;
+    float yaw, pitch, vertikal;
 
     void Awake()
     {
         controller = GetComponent<CharacterController>();
-        eigeneRenderer = GetComponentsInChildren<Renderer>();
         paint = GetComponent<SelfPaintSystem>();
-    }
-
-    void OnEnable() { GamePhaseManager.PhaseGewechselt += BeiPhasenwechsel; }
-    void OnDisable() { GamePhaseManager.PhaseGewechselt -= BeiPhasenwechsel; }
-
-    void BeiPhasenwechsel(SpielPhase neu)
-    {
-        if (neu == SpielPhase.Suchen)
-            freezePosition = transform.position;
-        else if (neu == SpielPhase.Malen)
-            zumSpawnTeleportiert = false;   // naechste Runde: wieder frisch warten+teleportieren
     }
 
     void Start()
     {
         if (photonView.IsMine && (paint == null || !paint.istBot))
-        {
-            ErzeugeGlowVolume();
-            UebernimmKameraUndSolo();
-        }
+            LokalStart();
     }
 
-    // In der FARBMIMIK-Szene (Kopie der Hauptszene) laeuft noch die Solo-Figur
-    // mit ihrer eigenen Kamera. Die legen wir schlafen und geben dem eigenen
-    // Spieler eine eigene Verfolgerkamera.
-    void UebernimmKameraUndSolo()
+    void LokalStart()
     {
+        yaw = transform.eulerAngles.y;
+
+        // NEON-BLASTER-Solo-Figur (falls in der Szene) schlafen legen
         GameObject solo = GameObject.FindGameObjectWithTag("Player");
-        if (solo != null && solo != gameObject)
-            solo.SetActive(false);
+        if (solo != null && solo != gameObject) { soloSpieler = solo; solo.SetActive(false); }
 
-        if (Camera.main == null)
-        {
-            var camGO = new GameObject("FarbmimikKamera") { tag = "MainCamera" };
-            camGO.AddComponent<Camera>();
-            if (Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None).Length == 0)
-                camGO.AddComponent<AudioListener>();
-        }
+        // Eigene Ego-Kamera auf Augenhoehe (wie NEON BLASTER)
+        var kamGO = new GameObject("FarbmimikKamera") { tag = "MainCamera" };
+        kamGO.transform.SetParent(transform, false);
+        kamGO.transform.localPosition = new Vector3(0f, 0.46f, 0f);
+        eigeneKamera = kamGO.AddComponent<Camera>();
+        if (Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None).Length == 0)
+            kamGO.AddComponent<AudioListener>();
+
+        // Eigenen Koerper ausblenden (Ego-Perspektive) - Mitspieler sehen ihn weiter
+        foreach (var r in GetComponentsInChildren<Renderer>())
+            r.enabled = false;
     }
 
-    /// <summary>Globales URP-Post-Processing-Volume mit Bloom, damit das Neon-Blinken gluehen kann.</summary>
-    static void ErzeugeGlowVolume()
+    void OnDestroy()
     {
-        if (glowVolumeErzeugt)
-            return;
-        glowVolumeErzeugt = true;
-
-        var go = new GameObject("NeonGlow_PostProcessing_Volume");
-        var volume = go.AddComponent<Volume>();
-        volume.isGlobal = true;
-        volume.priority = 10;
-
-        var profil = ScriptableObject.CreateInstance<VolumeProfile>();
-        var bloom = profil.Add<Bloom>(true);
-        bloom.intensity.Override(1.6f);
-        bloom.threshold.Override(1.1f);   // nur HDR-Farben (unser Cyan) gluehen
-        volume.profile = profil;
+        if (photonView.IsMine && (paint == null || !paint.istBot) && soloSpieler != null)
+        {
+            soloSpieler.SetActive(true);
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
     }
 
     void Update()
     {
-        if (!photonView.IsMine)
-            return;
-
-        // Bots sind passive Verstecke: sie stehen still (auf dem MasterClient
-        // ist ein Bot-Raumobjekt zwar "IsMine", darf aber NICHT auf die
-        // Host-Tastatur reagieren)
-        if (paint != null && paint.istBot)
+        if (!photonView.IsMine || (paint != null && paint.istBot))
             return;
 
         var phasen = GamePhaseManager.Instance;
+        SpielPhase ph = phasen != null ? phasen.phase : SpielPhase.Lobby;
         bool binSucher = phasen != null && phasen.IstSucher(photonView.ViewID);
 
-        // Sucher wartet auf den Spawn: keine Bewegung, schwarzer Bildschirm kommt aus LobbyUI
-        if (binSucher && phasen.phase == SpielPhase.Suchen && !phasen.sucherAktiv)
-            return;
+        // Eingefroren: Sucher waehrend Verstecken, Versteckte waehrend Suchen
+        bool eingefroren = (ph == SpielPhase.Verstecken && binSucher)
+                        || (ph == SpielPhase.Suchen && !binSucher);
+        bool imSpiel = ph == SpielPhase.Verstecken || ph == SpielPhase.Suchen;
+        bool malenOffen = SelfPaintSystem.MalUiOffen;
 
-        // Der Moment, in dem der Sucher spawnt: einmalig zur Lichtsaeule teleportieren
-        if (binSucher && phasen != null && phasen.phase == SpielPhase.Suchen &&
-            phasen.sucherAktiv && !zumSpawnTeleportiert)
+        // Aktiv steuern nur wenn: im Spiel, nicht eingefroren, Mal-UI zu
+        bool aktiv = imSpiel && !eingefroren && !malenOffen;
+
+        // Cursor: beim aktiven Spielen gesperrt (Maus-Blick), sonst frei (Menue/Malen)
+        var sollLock = aktiv ? CursorLockMode.Locked : CursorLockMode.None;
+        if (Cursor.lockState != sollLock)
         {
-            zumSpawnTeleportiert = true;
-            TeleportZuSpawn(phasen.sucherSpawnPosition);
+            Cursor.lockState = sollLock;
+            Cursor.visible = !aktiv;
         }
 
-        Bewege();
-        UeberwacheFreeze();
-    }
-
-    void TeleportZuSpawn(Vector3 position)
-    {
-        controller.enabled = false;
-        transform.position = position + Vector3.up * 0.1f;
-        controller.enabled = true;
-    }
-
-    void Bewege()
-    {
-        var tastatur = Keyboard.current;
-        if (tastatur == null)
-            return;
-
-        float drehung = (tastatur.dKey.isPressed ? 1f : 0f) - (tastatur.aKey.isPressed ? 1f : 0f);
-        float vorwaerts = (tastatur.wKey.isPressed ? 1f : 0f) - (tastatur.sKey.isPressed ? 1f : 0f);
-
-        transform.Rotate(0f, drehung * drehTempo * Time.deltaTime, 0f);
-
-        Vector3 bewegung = transform.forward * (vorwaerts * tempo);
-        bewegung.y = -9.81f;   // simple Schwerkraft
-        controller.Move(bewegung * Time.deltaTime);
-    }
-
-    void UeberwacheFreeze()
-    {
-        var phasen = GamePhaseManager.Instance;
-        // Neon-Strafe erst, wenn der Sucher WIRKLICH auf der Map ist -
-        // waehrend der Vorbereitungszeit (Sucher noch nicht gespawnt) gilt
-        // die Freeze-Regel noch nicht
-        if (phasen == null || phasen.phase != SpielPhase.Suchen || !phasen.sucherAktiv)
-            return;
-        if (phasen.IstSucher(photonView.ViewID) || blinkt)
-            return;
-
-        if (Vector3.Distance(transform.position, freezePosition) > bewegungsToleranz)
+        if (aktiv)
         {
-            freezePosition = transform.position;
-            // Photon hat keinen dedizierten Server: der Spieler, der sich
-            // bewegt hat, meldet das direkt an alle (kein Umweg mehr ueber
-            // eine vertrauenswuerdige Zwischenstelle noetig fuer ein
-            // Party-Spiel dieser Groesse)
-            photonView.RPC(nameof(RpcBlinke), RpcTarget.All);
+            Umschauen();
+            Laufen();
+        }
+        else
+        {
+            // Nur Schwerkraft, damit man nicht schwebt
+            vertikal = controller.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
+            controller.Move(Vector3.up * vertikal * Time.deltaTime);
         }
     }
 
-    void LateUpdate()
+    void Umschauen()
     {
-        // einfache Verfolgerkamera fuer den lokalen Spieler (nicht fuer Bots)
-        if (!photonView.IsMine)
-            return;
-        if (paint != null && paint.istBot)
-            return;
-        var kamera = Camera.main;
-        if (kamera == null)
-            return;
-
-        // an die kleine Figur (~0.5 m) angepasst: naeher dran, niedriger
-        Vector3 ziel = transform.position - transform.forward * 2f + Vector3.up * 1f;
-        kamera.transform.position = Vector3.Lerp(kamera.transform.position, ziel, 8f * Time.deltaTime);
-        kamera.transform.LookAt(transform.position + Vector3.up * 0.35f);
+        var maus = Mouse.current;
+        if (maus == null || eigeneKamera == null) return;
+        Vector2 d = maus.delta.ReadValue();
+        yaw += d.x * mausEmpfindlichkeit;
+        pitch = Mathf.Clamp(pitch - d.y * mausEmpfindlichkeit, -80f, 80f);
+        transform.rotation = Quaternion.Euler(0f, yaw, 0f);
+        eigeneKamera.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
     }
 
-    [PunRPC]
-    void RpcBlinke()
+    void Laufen()
     {
-        if (!blinkt)
-            StartCoroutine(Blinken());
-    }
-
-    IEnumerator Blinken()
-    {
-        blinkt = true;
-
-        // Waehrend des GESAMTEN Blinkens durch Waende hindurch sichtbar:
-        // ZTest immer bestehen lassen (zeichnet ueber alles drueber) und
-        // die Warteschlange weit nach hinten setzen - das ist der "Roentgen"-Effekt.
-        // Urspruengliche Werte merken, um sie am Ende wiederherzustellen.
-        var materialien = new System.Collections.Generic.List<Material>();
-        var urspruenglicheQueues = new System.Collections.Generic.List<int>();
-        foreach (var r in eigeneRenderer)
-        {
-            foreach (var m in r.materials)
-            {
-                materialien.Add(m);
-                urspruenglicheQueues.Add(m.renderQueue);
-                if (m.HasProperty("_ZTest"))
-                    m.SetInt("_ZTest", (int)CompareFunction.Always);
-                m.renderQueue = 4000;   // Overlay - zeichnet nach allem anderen
-            }
-        }
-
-        // HDR-Cyan (Wert > 1) -> liegt ueber der Bloom-Schwelle -> glueht neon
-        Color glueh = NeonCyan * 6f;
-        float ende = Time.time + blinkDauer;
-        bool an = false;
-
-        while (Time.time < ende)
-        {
-            an = !an;
-            foreach (var m in materialien)
-            {
-                if (an)
-                {
-                    m.EnableKeyword("_EMISSION");
-                    m.SetColor("_EmissionColor", glueh);
-                }
-                else
-                {
-                    m.SetColor("_EmissionColor", Color.black);
-                }
-            }
-            yield return new WaitForSeconds(0.15f);
-        }
-
-        for (int i = 0; i < materialien.Count; i++)
-        {
-            materialien[i].SetColor("_EmissionColor", Color.black);
-            if (materialien[i].HasProperty("_ZTest"))
-                materialien[i].SetInt("_ZTest", (int)CompareFunction.LessEqual);
-            materialien[i].renderQueue = urspruenglicheQueues[i];
-        }
-
-        blinkt = false;
+        var kb = Keyboard.current;
+        if (kb == null) return;
+        float x = (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f);
+        float z = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
+        Vector3 richtung = (transform.right * x + transform.forward * z).normalized * tempo;
+        vertikal = controller.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
+        controller.Move((richtung + Vector3.up * vertikal) * Time.deltaTime);
     }
 }

@@ -117,25 +117,32 @@ public class SelfPaintSystem : MonoBehaviourPun
         platz = neuerPlatz;
     }
 
+    /// <summary>Ist die Mal-UI gerade offen? (FreezePenalty gibt dann den Cursor frei)</summary>
+    public static bool MalUiOffen;
+
     void Update()
     {
         if (!photonView.IsMine || istBot)
             return;
 
-        SpielPhase phase = GamePhaseManager.Instance != null
-            ? GamePhaseManager.Instance.phase
-            : SpielPhase.Lobby;
+        var pm = GamePhaseManager.Instance;
+        SpielPhase phase = pm != null ? pm.phase : SpielPhase.Lobby;
+        bool binSucher = pm != null && pm.IstSucher(photonView.ViewID);
+
+        // Malen erlaubt: nur wer NICHT Sucher ist, in Verstecken UND Suchen
+        // (auch eingefroren kann man weiter malen). Beliebig oft wiederholbar.
+        bool darfMalen = !binSucher &&
+            (phase == SpielPhase.Verstecken || phase == SpielPhase.Suchen);
 
         var tastatur = Keyboard.current;
-        if (tastatur != null && tastatur.eKey.wasPressedThisFrame &&
-            phase == SpielPhase.Malen && !farbeGesetzt)
+        if (tastatur != null && tastatur.eKey.wasPressedThisFrame && darfMalen)
         {
             if (uiOffen) SchliesseUI();
             else OeffneUI();
         }
 
-        // UI zwangsweise zu, wenn die Malphase endet
-        if (uiOffen && phase != SpielPhase.Malen)
+        // UI zwangsweise zu, wenn man gerade nicht malen darf
+        if (uiOffen && !darfMalen)
             SchliesseUI();
 
         if (uiOffen)
@@ -176,11 +183,8 @@ public class SelfPaintSystem : MonoBehaviourPun
 
             if (wische >= WischeNoetig)
             {
-                if (GamePhaseManager.Instance != null &&
-                    GamePhaseManager.Instance.phase == SpielPhase.Malen && !farbeGesetzt)
-                {
-                    photonView.RPC(nameof(RpcSetzeFarbe), RpcTarget.AllBuffered, hue);
-                }
+                // Farbe setzen (auch neu einfaerben moeglich) - an alle verteilt
+                photonView.RPC(nameof(RpcSetzeFarbe), RpcTarget.AllBuffered, hue);
                 SchliesseUI();
             }
             else
@@ -193,7 +197,6 @@ public class SelfPaintSystem : MonoBehaviourPun
     [PunRPC]
     void RpcSetzeFarbe(float gewaehlterHue)
     {
-        if (farbeGesetzt) return;   // schon gesetzt -> doppelten Aufruf ignorieren
         farbeGesetzt = true;
         SetzeSichtbareFarbe(Color.HSVToRGB(gewaehlterHue, 0.9f, 1f));
     }
@@ -206,6 +209,7 @@ public class SelfPaintSystem : MonoBehaviourPun
             BaueUI();
 
         uiOffen = true;
+        MalUiOffen = true;
         wische = 0;
         draggt = false;
         AktualisiereHinweis();
@@ -218,6 +222,7 @@ public class SelfPaintSystem : MonoBehaviourPun
     void SchliesseUI()
     {
         uiOffen = false;
+        MalUiOffen = false;
         draggt = false;
         if (farbPanel != null && farbPanel.activeSelf)
             LeanTween.scale(farbPanel, Vector3.zero, 0.25f).setEaseInBack()

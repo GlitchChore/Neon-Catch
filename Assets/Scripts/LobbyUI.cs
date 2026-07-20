@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Photon.Pun;
 using UnityEngine;
@@ -101,7 +102,7 @@ public class LobbyUI : MonoBehaviour
     string zuletztGezeigterFehler = "";
     InputField codeFeld;
     Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText, platzierungenText;
-    GameObject startButton, nochmalButton, kopierButton;
+    GameObject startButton, nochmalButton, kopierButton, sucherWahlButton;
 
     static readonly Color Neon = new Color(0.1f, 0.95f, 0.95f);
 
@@ -152,8 +153,8 @@ public class LobbyUI : MonoBehaviour
             ? GamePhaseManager.Instance.phase
             : SpielPhase.Lobby;
 
-        // Hintergrundbild ueberall AUSSER im laufenden Spiel (Malen/Suchen)
-        bool bildSichtbar = !(verbunden && (phase == SpielPhase.Malen || phase == SpielPhase.Suchen));
+        // Hintergrundbild ueberall AUSSER im laufenden Spiel (Verstecken/Suchen)
+        bool bildSichtbar = !(verbunden && (phase == SpielPhase.Verstecken || phase == SpielPhase.Suchen));
         if (hintergrundBild != null) hintergrundBild.enabled = bildSichtbar;
         if (weisserSchleier != null) weisserSchleier.enabled = bildSichtbar;
 
@@ -179,7 +180,7 @@ public class LobbyUI : MonoBehaviour
             beitretenPanel.SetActive(false);
 
         lobbyPanel.SetActive(verbunden && phase == SpielPhase.Lobby);
-        hudPanel.SetActive(verbunden && (phase == SpielPhase.Malen || phase == SpielPhase.Suchen));
+        hudPanel.SetActive(verbunden && (phase == SpielPhase.Verstecken || phase == SpielPhase.Suchen));
         endePanel.SetActive(verbunden && phase == SpielPhase.Ende);
 
         if (lobbyPanel.activeSelf)
@@ -192,10 +193,10 @@ public class LobbyUI : MonoBehaviour
             AktualisiereEnde();
         }
 
-        // Schwarzer Wartebildschirm: nur fuer den Sucher selbst, waehrend
-        // die Vorbereitungszeit laeuft (Sucher noch nicht auf der Map)
+        // Schwarzer Sucher-Bildschirm: waehrend VERSTECKEN sieht der Sucher nur
+        // "DU BIST SUCHER" + Countdown - die anderen verstecken sich derweil.
         bool binSucherUndWartet = false;
-        if (verbunden && phase == SpielPhase.Suchen && GamePhaseManager.Instance != null && !GamePhaseManager.Instance.sucherAktiv)
+        if (verbunden && phase == SpielPhase.Verstecken && GamePhaseManager.Instance != null)
         {
             var lokal = LokalerSpieler();
             if (lokal != null && GamePhaseManager.Instance.IstSucher(lokal.photonView.ViewID))
@@ -203,7 +204,8 @@ public class LobbyUI : MonoBehaviour
         }
         sucherWartePanel.SetActive(binSucherUndWartet);
         if (binSucherUndWartet)
-            sucherWarteText.text = "DU BIST DER SUCHER\n\nWarte...\nSpawn in " + GamePhaseManager.Instance.sucherSpawnRest + "s";
+            sucherWarteText.text = "DU BIST SUCHER\n\nDie anderen verstecken sich...\nNoch " +
+                                   GamePhaseManager.Instance.restSekunden + "s";
     }
 
     static SelfPaintSystem LokalerSpieler()
@@ -249,6 +251,40 @@ public class LobbyUI : MonoBehaviour
         spielerListeText.text = liste;
 
         startButton.SetActive(PhotonNetwork.IsMasterClient);
+
+        // Sucher-Auswahl nur beim Host anzeigen + Text aktualisieren
+        sucherWahlButton.SetActive(PhotonNetwork.IsMasterClient);
+        if (PhotonNetwork.IsMasterClient && GamePhaseManager.Instance != null)
+        {
+            int gw = GamePhaseManager.Instance.gewaehlterSucher;
+            string name = "Zufällig";
+            if (gw != 0)
+            {
+                var s = spieler.FirstOrDefault(x => x.photonView.ViewID == gw);
+                name = s != null && s.spielerName != "" ? s.spielerName : "Zufällig";
+                if (s == null) GamePhaseManager.Instance.gewaehlterSucher = 0;   // Spieler weg -> zurueck auf Zufaellig
+            }
+            var t = sucherWahlButton.GetComponentInChildren<Text>();
+            if (t != null) t.text = "Sucher: " + name + "  (ändern)";
+        }
+    }
+
+    // Host waehlt den Sucher durch: Zufaellig -> Spieler1 -> Spieler2 -> ... -> Zufaellig
+    void SucherWahlWechseln()
+    {
+        if (!PhotonNetwork.IsMasterClient || GamePhaseManager.Instance == null) return;
+
+        var menschen = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
+                       .Where(s => !s.istBot)
+                       .OrderBy(s => s.photonView.Owner != null ? s.photonView.Owner.ActorNumber : 0)
+                       .ToList();
+
+        var ids = new List<int> { 0 };   // 0 = Zufaellig
+        ids.AddRange(menschen.Select(m => m.photonView.ViewID));
+
+        int akt = ids.IndexOf(GamePhaseManager.Instance.gewaehlterSucher);
+        if (akt < 0) akt = 0;
+        GamePhaseManager.Instance.gewaehlterSucher = ids[(akt + 1) % ids.Count];
     }
 
     void AktualisiereHud(SpielPhase phase)
@@ -256,27 +292,28 @@ public class LobbyUI : MonoBehaviour
         int sek = GamePhaseManager.Instance.restSekunden;
         string zeit = (sek / 60) + ":" + (sek % 60).ToString("00");
 
-        if (phase == SpielPhase.Malen)
+        var lokal = LokalerSpieler();
+        bool binSucher = lokal != null && GamePhaseManager.Instance.IstSucher(lokal.photonView.ViewID);
+
+        if (phase == SpielPhase.Verstecken)
         {
-            hudText.text = "MALEN & VERSTECKEN   " + zeit + "\n[E] = Farbe waehlen (3x wischen)";
+            // Sucher sieht hier den schwarzen Bildschirm - dieser Text ist fuer
+            // die Versteckten: verstecken + anmalen
+            hudText.text = "VERSTECK DICH!   " + zeit + "\n[E] = anmalen (3x wischen)";
             sucherText.text = "";
         }
-        else
+        else   // Suchen
         {
-            hudText.text = "SUCHEN & FREEZE   " + zeit;
-
-            var lokal = LokalerSpieler();
-            if (lokal != null && GamePhaseManager.Instance.IstSucher(lokal.photonView.ViewID))
+            if (binSucher)
             {
-                sucherText.text = "DU BIST DER SUCHER! Finde die anderen!";
+                hudText.text = "FINDE ALLE!   " + zeit;
+                sucherText.text = "Berühre die Versteckten (2 m)";
                 sucherText.color = Color.yellow;
             }
             else
             {
-                var sucher = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
-                    .FirstOrDefault(s => s.photonView.ViewID == GamePhaseManager.Instance.sucherViewId);
-                string name = sucher != null && sucher.spielerName != "" ? sucher.spielerName : "?";
-                sucherText.text = "Sucher: " + name + "  -  NICHT BEWEGEN!";
+                hudText.text = "EINGEFROREN!   " + zeit;
+                sucherText.text = "Du kannst dich nicht bewegen - aber weiter malen [E]";
                 sucherText.color = Neon;
             }
         }
@@ -449,22 +486,27 @@ public class LobbyUI : MonoBehaviour
             kopiertAnzeige = 2f;
         }).gameObject;
 
-        spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 60), 20, Color.white);
+        spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 90), 19, Color.white);
         spielerListeText.alignment = TextAnchor.UpperCenter;
-        spielerListeText.rectTransform.sizeDelta = new Vector2(460, 145);
+        spielerListeText.rectTransform.sizeDelta = new Vector2(460, 110);
 
-        // Kurze Spielerklaerung (2 Saetze)
-        var erklaerung = Text(lobbyPanel.transform, "", new Vector2(0, -75), 15, new Color(0.85f, 0.85f, 0.85f));
-        erklaerung.text = "So geht's: 90 Sekunden Farbe mischen (Taste E, 3x wischen) und verstecken.\n" +
-                          "Danach sucht ein Sucher - wer sich bewegt, blinkt neon!";
+        // Sucher-Auswahl (nur der Host): Zufaellig oder ein bestimmter Spieler.
+        // Klick auf den Knopf wechselt durch die Moeglichkeiten.
+        sucherWahlButton = Knopf(lobbyPanel.transform, "Sucher: Zufällig", new Vector2(0, -25),
+            SucherWahlWechseln).gameObject;
+
+        // Kurze Spielerklaerung
+        var erklaerung = Text(lobbyPanel.transform, "", new Vector2(0, -85), 15, new Color(0.85f, 0.85f, 0.85f));
+        erklaerung.text = "Der Sucher wartet (schwarzer Bildschirm), die anderen verstecken sich\n" +
+                          "und malen sich an (E). Dann sucht der Sucher - Berühren = gefangen.";
         erklaerung.rectTransform.sizeDelta = new Vector2(490, 55);
 
-        startButton = Knopf(lobbyPanel.transform, "SPIEL STARTEN (nur Host)", new Vector2(0, -195), () =>
+        startButton = Knopf(lobbyPanel.transform, "SPIEL STARTEN (nur Host)", new Vector2(0, -155), () =>
         {
             if (PhotonNetwork.IsMasterClient)
                 GamePhaseManager.Instance.StarteSpiel();
         }).gameObject;
-        Knopf(lobbyPanel.transform, "Verlassen", new Vector2(0, -255), TrenneVerbindung);
+        Knopf(lobbyPanel.transform, "Verlassen", new Vector2(0, -215), TrenneVerbindung);
         lobbyPanel.SetActive(false);
 
         // ---------- Spiel-HUD ----------
