@@ -1576,6 +1576,18 @@ namespace NeonCatch
             var go = new GameObject("Herzen_Anzeige");
             anzeige = go.transform;
             text = go.AddComponent<TextMesh>();
+
+            // WICHTIG: Font UND dessen Material setzen - ohne expliziten Font
+            // rendert TextMesh die Herz-Zeichen ♥/♡ als leere Kaestchen (Tofu).
+            // LegacyRuntime.ttf (Arial) enthaelt die Herz-Glyphen.
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (font != null)
+            {
+                text.font = font;
+                var mr = go.GetComponent<MeshRenderer>();
+                if (mr != null) mr.sharedMaterial = font.material;
+            }
+
             text.color = new Color(0.95f, 0.15f, 0.15f);   // rot
             text.fontSize = 96;
             text.characterSize = 0.014f * Mathf.Max(0.5f, figurHoehe / 0.75f);

@@ -1143,6 +1143,17 @@ namespace NeonCatch
         {
             if (cc == null) return;
 
+            // SICHERHEITSNETZ: Wenn wir NICHT schwimmen, muss die normale
+            // Steuerung immer aktiv sein. Falls sie aus irgendeinem Grund
+            // deaktiviert haengen blieb (z.B. Ausstieg nicht sauber erkannt),
+            // hier wieder anschalten -> "nach dem Rausgehen kann man nichts tun"
+            // kann so nicht mehr passieren.
+            if (!schwimmt && controller != null && !controller.enabled)
+            {
+                controller.enabled = true;
+                SetzeUnterwasserBild(false);
+            }
+
             float wasserTiefe = wasserY - transform.position.y;
 
             if (!schwimmt)
