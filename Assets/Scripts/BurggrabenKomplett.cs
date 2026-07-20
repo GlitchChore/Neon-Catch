@@ -129,7 +129,17 @@ namespace NeonCatch
 
             if (baueGrabenBoden) BaueGrabenMesh();
             if (baueInselBoden || baueWiesenBoden) BaueUmgebungsBoden();
-            BaueWasser();
+
+            // Nur EINE Wasserflaeche: liegt schon eine echte (von Hand /
+            // Terrain-Builder platzierte) "Wasser"-Flaeche in der Szene, NICHT
+            // zusaetzlich die eigene (tiefer liegende) Platte bauen - das
+            // ergab bisher "2 Wasserflaechen" uebereinander.
+            if (!EchtesWasserVorhanden())
+                BaueWasser();
+            else
+                Debug.Log("BurggrabenKomplett: echtes Wasser-Objekt gefunden - " +
+                          "automatisch gebaute (untere) Wasserflaeche uebersprungen.");
+
             PlatziereSteine();
             PlatzierePflanzen();
             PlatziereFische();
@@ -500,6 +510,16 @@ namespace NeonCatch
             box.center = new Vector3(0f, (wasserYLokal + sohleYLokal - 1f) * 0.5f, 0f);
             box.size   = new Vector3(halb * 2f, wasserYLokal - sohleYLokal + 2f, halb * 2f);
             triggerGo.AddComponent<WasserEintauchTrigger>();
+        }
+
+        // Sucht ein von Hand platziertes Wasser-Objekt ("Burggraben/Wasser"
+        // oder ein eigenstaendiges "Wasser" in der Szene) - siehe SucheEchtenGraben.
+        static bool EchtesWasserVorhanden()
+        {
+            GameObject grabenGo = GameObject.Find("Burggraben");
+            if (grabenGo != null && grabenGo.transform.Find("Wasser") != null)
+                return true;
+            return GameObject.Find("Wasser") != null;
         }
 
         Material ErzeugeWasserMaterial()

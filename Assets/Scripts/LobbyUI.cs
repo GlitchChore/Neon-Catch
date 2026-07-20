@@ -153,6 +153,8 @@ public class LobbyUI : MonoBehaviour
     Text hilfeInhaltText, beitretenStatusText, ipHinweisText;
     InputField freundNameFeld;
     GameObject freundeReihe;
+    GameObject sucherWartePanel;
+    Text sucherWarteText;
     RawImage hintergrundBild;
     Image weisserSchleier;
     bool verbindungLief, warVollVerbunden;
@@ -240,6 +242,19 @@ public class LobbyUI : MonoBehaviour
             AktualisiereHud(phase);
         if (endePanel.activeSelf)
             nochmalButton.SetActive(NetworkServer.active);
+
+        // Schwarzer Wartebildschirm: nur fuer den Sucher selbst, waehrend
+        // die Vorbereitungszeit laeuft (Sucher noch nicht auf der Map)
+        bool binSucherUndWartet = false;
+        if (verbunden && phase == SpielPhase.Suchen && GamePhaseManager.Instance != null && !GamePhaseManager.Instance.sucherAktiv)
+        {
+            var lokal = NetworkClient.localPlayer;
+            if (lokal != null && GamePhaseManager.Instance.IstSucher(lokal))
+                binSucherUndWartet = true;
+        }
+        sucherWartePanel.SetActive(binSucherUndWartet);
+        if (binSucherUndWartet)
+            sucherWarteText.text = "DU BIST DER SUCHER\n\nWarte...\nSpawn in " + GamePhaseManager.Instance.sucherSpawnRest + "s";
     }
 
     // ---------- Anzeigen aktualisieren ----------
@@ -537,6 +552,19 @@ public class LobbyUI : MonoBehaviour
         hilfeInhaltText.rectTransform.sizeDelta = new Vector2(580, 580);
         Knopf(hilfePanel.transform, "Zurück", new Vector2(0, -300), () => hilfePanel.SetActive(false));
         hilfePanel.SetActive(false);
+
+        // ---------- Sucher-Wartebildschirm (voller schwarzer Bildschirm) ----------
+        sucherWartePanel = new GameObject("SucherWartePanel");
+        sucherWartePanel.transform.SetParent(canvas.transform, false);
+        var wartenBild = sucherWartePanel.AddComponent<Image>();
+        wartenBild.color = Color.black;
+        var wartenRect = wartenBild.rectTransform;
+        wartenRect.anchorMin = Vector2.zero;
+        wartenRect.anchorMax = Vector2.one;
+        wartenRect.sizeDelta = Vector2.zero;
+        sucherWarteText = Text(sucherWartePanel.transform, "", Vector2.zero, 34, Neon);
+        sucherWarteText.rectTransform.sizeDelta = new Vector2(600, 200);
+        sucherWartePanel.SetActive(false);
     }
 
     void ZeigeHilfe(string inhalt)

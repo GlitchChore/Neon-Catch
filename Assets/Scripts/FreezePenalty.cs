@@ -8,9 +8,14 @@ using UnityEngine.Rendering.Universal;
 /// <summary>
 /// Bewegung + Freeze-Strafe:
 /// - WASD-Bewegung (W/S vor und zurueck, A/D drehen) + einfache Verfolgerkamera
-/// - PHASE 2 (Suchen): Wer NICHT Sucher ist und sich trotzdem bewegt,
-///   blinkt fuer 2 Sekunden Neon-Cyan - sichtbar fuer ALLE Spieler.
-///   Der Glow kommt ueber URP-Post-Processing (Bloom-Volume, automatisch erzeugt).
+/// - Der Sucher wartet die Vorbereitungszeit lang bewegungslos (schwarzer
+///   Bildschirm kommt aus LobbyUI), teleportiert dann automatisch zur
+///   Spawn-Position (Lichtsaeule) und kann erst ab da suchen
+/// - PHASE 2 (Suchen, erst NACHDEM der Sucher gespawnt ist): Wer NICHT
+///   Sucher ist und sich trotzdem bewegt, blinkt 2 Sekunden Neon-Cyan und
+///   ist dabei durch Waende hindurch sichtbar (Roentgen-Effekt) - fuer
+///   ALLE Spieler. Der Glow kommt ueber URP-Post-Processing (Bloom-Volume,
+///   automatisch erzeugt).
 /// Gehoert auf das Spieler-Prefab (zusammen mit NetworkIdentity + NetworkTransformReliable).
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
@@ -31,6 +36,7 @@ public class FreezePenalty : NetworkBehaviour
     Renderer[] eigeneRenderer;
     Vector3 freezePosition;
     bool blinkt;
+    bool zumSpawnTeleportiert;
 
     void Awake()
     {
@@ -45,6 +51,8 @@ public class FreezePenalty : NetworkBehaviour
     {
         if (neu == SpielPhase.Suchen)
             freezePosition = transform.position;
+        else if (neu == SpielPhase.Malen)
+            zumSpawnTeleportiert = false;   // naechste Runde: wieder frisch warten+teleportieren
     }
 
     public override void OnStartLocalPlayer()
@@ -76,8 +84,30 @@ public class FreezePenalty : NetworkBehaviour
         if (!isLocalPlayer)
             return;
 
+        var phasen = GamePhaseManager.Instance;
+        bool binSucher = phasen != null && phasen.IstSucher(netIdentity);
+
+        // Sucher wartet auf den Spawn: keine Bewegung, schwarzer Bildschirm kommt aus LobbyUI
+        if (binSucher && phasen.phase == SpielPhase.Suchen && !phasen.sucherAktiv)
+            return;
+
+        // Der Moment, in dem der Sucher spawnt: einmalig zur Lichtsaeule teleportieren
+        if (binSucher && phasen != null && phasen.phase == SpielPhase.Suchen &&
+            phasen.sucherAktiv && !zumSpawnTeleportiert)
+        {
+            zumSpawnTeleportiert = true;
+            TeleportZuSpawn(phasen.sucherSpawnPosition);
+        }
+
         Bewege();
         UeberwacheFreeze();
+    }
+
+    void TeleportZuSpawn(Vector3 position)
+    {
+        controller.enabled = false;
+        transform.position = position + Vector3.up * 0.1f;
+        controller.enabled = true;
     }
 
     void Bewege()
@@ -99,7 +129,10 @@ public class FreezePenalty : NetworkBehaviour
     void UeberwacheFreeze()
     {
         var phasen = GamePhaseManager.Instance;
-        if (phasen == null || phasen.phase != SpielPhase.Suchen)
+        // Neon-Strafe erst, wenn der Sucher WIRKLICH auf der Map ist -
+        // waehrend der Vorbereitungszeit (Sucher noch nicht gespawnt) gilt
+        // die Freeze-Regel noch nicht
+        if (phasen == null || phasen.phase != SpielPhase.Suchen || !phasen.sucherAktiv)
             return;
         if (phasen.IstSucher(netIdentity) || blinkt)
             return;
@@ -129,7 +162,7 @@ public class FreezePenalty : NetworkBehaviour
     void CmdBewegtWaehrendFreeze()
     {
         var phasen = GamePhaseManager.Instance;
-        if (phasen != null && phasen.phase == SpielPhase.Suchen && !phasen.IstSucher(netIdentity))
+        if (phasen != null && phasen.phase == SpielPhase.Suchen && phasen.sucherAktiv && !phasen.IstSucher(netIdentity))
             RpcBlinke();
     }
 
@@ -144,6 +177,24 @@ public class FreezePenalty : NetworkBehaviour
     {
         blinkt = true;
 
+        // Waehrend des GESAMTEN Blinkens durch Waende hindurch sichtbar:
+        // ZTest immer bestehen lassen (zeichnet ueber alles drueber) und
+        // die Warteschlange weit nach hinten setzen - das ist der "Roentgen"-Effekt.
+        // Urspruengliche Werte merken, um sie am Ende wiederherzustellen.
+        var materialien = new System.Collections.Generic.List<Material>();
+        var urspruenglicheQueues = new System.Collections.Generic.List<int>();
+        foreach (var r in eigeneRenderer)
+        {
+            foreach (var m in r.materials)
+            {
+                materialien.Add(m);
+                urspruenglicheQueues.Add(m.renderQueue);
+                if (m.HasProperty("_ZTest"))
+                    m.SetInt("_ZTest", (int)CompareFunction.Always);
+                m.renderQueue = 4000;   // Overlay - zeichnet nach allem anderen
+            }
+        }
+
         // HDR-Cyan (Wert > 1) -> liegt ueber der Bloom-Schwelle -> glueht neon
         Color glueh = NeonCyan * 6f;
         float ende = Time.time + blinkDauer;
@@ -152,27 +203,28 @@ public class FreezePenalty : NetworkBehaviour
         while (Time.time < ende)
         {
             an = !an;
-            foreach (var r in eigeneRenderer)
+            foreach (var m in materialien)
             {
-                foreach (var m in r.materials)
+                if (an)
                 {
-                    if (an)
-                    {
-                        m.EnableKeyword("_EMISSION");
-                        m.SetColor("_EmissionColor", glueh);
-                    }
-                    else
-                    {
-                        m.SetColor("_EmissionColor", Color.black);
-                    }
+                    m.EnableKeyword("_EMISSION");
+                    m.SetColor("_EmissionColor", glueh);
+                }
+                else
+                {
+                    m.SetColor("_EmissionColor", Color.black);
                 }
             }
             yield return new WaitForSeconds(0.15f);
         }
 
-        foreach (var r in eigeneRenderer)
-            foreach (var m in r.materials)
-                m.SetColor("_EmissionColor", Color.black);
+        for (int i = 0; i < materialien.Count; i++)
+        {
+            materialien[i].SetColor("_EmissionColor", Color.black);
+            if (materialien[i].HasProperty("_ZTest"))
+                materialien[i].SetInt("_ZTest", (int)CompareFunction.LessEqual);
+            materialien[i].renderQueue = urspruenglicheQueues[i];
+        }
 
         blinkt = false;
     }

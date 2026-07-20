@@ -68,6 +68,11 @@ namespace NeonCatch
             cc.radius     = bodyRadius;
             cc.center     = new Vector3(0f, figureHeight / 2f, 0f);
             cc.stepOffset = maxStepHeight;
+            // Unity-Standard (45°) ist flacher als die Boeschung des Burggrabens
+            // (~53°) - man musste bisher hochspringen, um aus dem Graben zu
+            // kommen, und blieb an der Boeschung "haengen" (wirkte wie eingefroren).
+            // Erzwingt den neuen Wert gegen gespeicherte Szenen-Werte.
+            cc.slopeLimit = 63f;
 
             Transform named = transform.Find("Spieler_Kamera");
             if (named != null)

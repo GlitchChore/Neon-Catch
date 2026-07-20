@@ -56,6 +56,7 @@ namespace NeonCatch
         bool zeigeOnlineBeitritt;
         bool zeigeHilfe;
         bool zeigeModusWahl;
+        bool zeigeSoloWahl;
         string hilfeInhalt = "";
         bool hilfeZurueckZuBeitritt;
         Texture2D menueHintergrund;
@@ -416,10 +417,12 @@ namespace NeonCatch
                 zeigeOnlineBeitritt = false;
         }
 
-        // RUNDE ERSTELLEN - Schritt 1: Modus auswählen. Zwei Karten mit je
-        // 1-2 Sätzen Beschreibung auf leicht weissem Grund, darunter der
-        // Hosten-Knopf. Das Hintergrundbild bleibt sichtbar.
-        void ZeichneModusKarten(float sw, float sh)
+        // Modus auswählen - EIN Bildschirm für beide Einstiege:
+        // solo == true  -> vom START-Knopf (offline, sofort spielen)
+        // solo == false -> von RUNDE ERSTELLEN (online, mit Room-Code)
+        // Zwei Karten mit je 1-2 Sätzen Beschreibung auf leicht weissem
+        // Grund, darunter der Start-Knopf. Das Hintergrundbild bleibt sichtbar.
+        void ZeichneModusKarten(float sw, float sh, bool solo)
         {
             if (kartenTex == null)
             {
@@ -435,7 +438,8 @@ namespace NeonCatch
                 kartenTitelStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter };
             kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
             kartenTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
-            GUI.Label(new Rect(0f, sh * 0.06f, sw, sh * 0.07f), "RUNDE ERSTELLEN - Modus auswählen", kartenTitelStil);
+            GUI.Label(new Rect(0f, sh * 0.06f, sw, sh * 0.07f),
+                      (solo ? "SOLO SPIELEN" : "RUNDE ERSTELLEN") + " - Modus auswählen", kartenTitelStil);
 
             kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.034f);
             float kartenBreite = sw * 0.27f, kartenHoehe = sh * 0.42f;
@@ -449,8 +453,10 @@ namespace NeonCatch
                       "NEON BLASTER", kartenTitelStil);
             GUI.Label(new Rect(links.x + sw * 0.012f, links.y + sh * 0.08f,
                                links.width - sw * 0.024f, links.height - sh * 0.15f),
-                      "Abschießen - jeder gegen jeden mit Farb-Blastern! " +
-                      "Wer als Letzter übrig ist, gewinnt. Freie Plätze füllen Bots auf.", kartenStil);
+                      solo
+                        ? "Abschießen gegen Bots! Wer als Letzter übrig ist, gewinnt."
+                        : "Abschießen - jeder gegen jeden mit Farb-Blastern! " +
+                          "Wer als Letzter übrig ist, gewinnt. Freie Plätze füllen Bots auf.", kartenStil);
 
             GUI.Label(new Rect(rechts.x, rechts.y + sh * 0.015f, rechts.width, sh * 0.05f),
                       "FARBMIMIK", kartenTitelStil);
@@ -460,27 +466,33 @@ namespace NeonCatch
                       "wer sich bewegt, blinkt neon auf.", kartenStil);
 
             knopfStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
+            string neonKnopfText = solo ? "NEON BLASTER SPIELEN" : "NEON BLASTER HOSTEN";
             if (GUI.Button(new Rect(links.x + links.width * 0.12f, links.y + links.height - sh * 0.075f,
-                                    links.width * 0.76f, sh * 0.055f), "NEON BLASTER HOSTEN", knopfStil))
+                                    links.width * 0.76f, sh * 0.055f), neonKnopfText, knopfStil))
             {
                 zeigeModusWahl = false;
-                KampfOnline.Hoste(botAnzahl);
+                zeigeSoloWahl = false;
+                if (solo) StarteKampf();
+                else KampfOnline.Hoste(botAnzahl);
             }
 
+            string farbKnopfText = solo ? "FARBMIMIK SPIELEN" : "FARBMIMIK HOSTEN";
             if (GUI.Button(new Rect(rechts.x + rechts.width * 0.12f, rechts.y + rechts.height - sh * 0.075f,
-                                    rechts.width * 0.76f, sh * 0.055f), "FARBMIMIK HOSTEN", knopfStil))
+                                    rechts.width * 0.76f, sh * 0.055f), farbKnopfText, knopfStil))
             {
                 PlayerPrefs.SetString("NeonCatch_HauptSzene",
                     UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
                 if (Application.CanStreamedLevelBeLoaded("Farbmimik"))
                 {
                     // Nach dem Szenenwechsel startet die FARBMIMIK-Lobby von selbst
+                    // (solo: man spielt einfach allein weiter, ohne auf Freunde zu warten)
                     PlayerPrefs.SetInt("NeonCatch_AutoHost", 1);
                     UnityEngine.SceneManagement.SceneManager.LoadScene("Farbmimik");
                 }
                 else
                 {
                     zeigeModusWahl = false;
+                    zeigeSoloWahl = false;
                     endText = "Szene 'Farbmimik' fehlt in den Build Settings! " +
                               "(File > Build Settings > beide Szenen hinzufügen)";
                 }
@@ -489,7 +501,10 @@ namespace NeonCatch
             knopfStil.fontSize = Mathf.RoundToInt(sh * 0.028f);
             if (GUI.Button(new Rect(sw * 0.5f - sw * 0.08f, sh * 0.66f, sw * 0.16f, sh * 0.06f),
                     "ZURÜCK", knopfStil))
+            {
                 zeigeModusWahl = false;
+                zeigeSoloWahl = false;
+            }
         }
 
         // Eingebaute Online-Hilfe: gleiche Texte wie in der FARBMIMIK-Lobby
@@ -608,9 +623,15 @@ namespace NeonCatch
                     return;
                 }
 
+                if (zeigeSoloWahl)
+                {
+                    ZeichneModusKarten(sw, sh, true);
+                    return;
+                }
+
                 if (zeigeModusWahl)
                 {
-                    ZeichneModusKarten(sw, sh);
+                    ZeichneModusKarten(sw, sh, false);
                     return;
                 }
 
@@ -640,11 +661,13 @@ namespace NeonCatch
                     SpielerProfil.Name = neuerName;
                 }
 
-                // START-Knopf (verschwindet, sobald der Kampf läuft)
+                // START-Knopf (verschwindet, sobald der Kampf läuft) - oeffnet
+                // die Modus-Auswahl, damit man auch solo zwischen NEON BLASTER
+                // und FARBMIMIK waehlen kann
                 knopfStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.70f, sw * 0.26f, sh * 0.08f),
-                        "START (Solo mit Bots)", knopfStil))
-                    StarteKampf();
+                        "START (Solo, Modus wählen)", knopfStil))
+                    zeigeSoloWahl = true;
 
                 knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
                 if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.79f, sw * 0.26f, sh * 0.055f),
