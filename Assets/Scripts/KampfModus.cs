@@ -69,6 +69,7 @@ namespace NeonCatch
         bool zeigeHilfe;
         bool zeigeModusWahl;
         bool zeigeSoloWahl;
+        bool zeigeCharaktere;
         string hilfeInhalt = "";
         bool hilfeZurueckZuBeitritt;
         Texture2D menueHintergrund;
@@ -535,6 +536,88 @@ namespace NeonCatch
                 zeigeSteuerung = false;
         }
 
+        // CHARAKTER-Bildschirm: die 3 Start-Figuren als drehende 3D-Vorschau
+        // (aus der CharakterSchau) mit Name, kleiner Geschichte, Blaettern und
+        // Auswahl. Das Bild kommt als RenderTexture aus einer eigenen Kamera.
+        void ZeichneCharaktere(float sw, float sh)
+        {
+            var schau = CharakterSchau.Hole();
+            if (!schau.Aktiv)
+            {
+                schau.SetzeAktiv(true);
+                schau.Zeige(PlayerPrefs.GetInt("NeonCatch_Charakter", 0));
+            }
+
+            // Halbtransparente Karte als ruhiger Hintergrund fuer den Text
+            if (kartenTex == null)
+            {
+                kartenTex = new Texture2D(1, 1);
+                kartenTex.SetPixel(0, 0, new Color(1f, 1f, 1f, 0.85f));
+                kartenTex.Apply();
+            }
+
+            // Titel
+            if (kartenTitelStil == null)
+                kartenTitelStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter };
+            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.04f);
+            kartenTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
+            GUI.Label(new Rect(0f, sh * 0.05f, sw, sh * 0.06f), "CHARAKTER WÄHLEN", kartenTitelStil);
+
+            // 3D-Vorschau (Hochformat, Seitenverhaeltnis der RenderTexture)
+            float vorschauH = sh * 0.54f;
+            float vorschauB = vorschauH * (512f / 760f);
+            var vorschauRect = new Rect(sw * 0.5f - vorschauB * 0.5f, sh * 0.13f, vorschauB, vorschauH);
+            if (schau.Textur != null)
+                GUI.DrawTexture(vorschauRect, schau.Textur, ScaleMode.ScaleToFit, false);
+
+            // Blaettern: < links, > rechts neben der Vorschau
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.05f);
+            float pfeilB = sw * 0.06f, pfeilH = sh * 0.10f;
+            float pfeilY = vorschauRect.y + vorschauRect.height * 0.5f - pfeilH * 0.5f;
+            if (GUI.Button(new Rect(vorschauRect.x - pfeilB - sw * 0.02f, pfeilY, pfeilB, pfeilH), "<", knopfStil))
+                schau.Zeige(schau.Index - 1);
+            if (GUI.Button(new Rect(vorschauRect.xMax + sw * 0.02f, pfeilY, pfeilB, pfeilH), ">", knopfStil))
+                schau.Zeige(schau.Index + 1);
+
+            // Name (gross) unter der Vorschau
+            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.05f);
+            GUI.Label(new Rect(0f, sh * 0.68f, sw, sh * 0.06f), schau.AktName, kartenTitelStil);
+
+            // Punkte-Zaehler "1 / 3"
+            if (steuerungStil == null)
+                steuerungStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft };
+            steuerungStil.alignment = TextAnchor.UpperCenter;
+            steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+            steuerungStil.normal.textColor = new Color(0.15f, 0.15f, 0.18f);
+            GUI.Label(new Rect(0f, sh * 0.735f, sw, sh * 0.03f),
+                      (schau.Index + 1) + " / " + schau.Anzahl, steuerungStil);
+
+            // Kleine Geschichte auf der Karte
+            var kartenRect = new Rect(sw * 0.5f - sw * 0.22f, sh * 0.77f, sw * 0.44f, sh * 0.11f);
+            GUI.DrawTexture(kartenRect, kartenTex);
+            steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
+            steuerungStil.normal.textColor = new Color(0.1f, 0.1f, 0.12f);
+            GUI.Label(new Rect(kartenRect.x + sw * 0.01f, kartenRect.y + sh * 0.006f,
+                               kartenRect.width - sw * 0.02f, kartenRect.height - sh * 0.012f),
+                      schau.AktGeschichte, steuerungStil);
+
+            // Auswahl-Knopf: merkt sich den Lieblings-Charakter
+            int gewaehlt = PlayerPrefs.GetInt("NeonCatch_Charakter", 0);
+            bool istGewaehlt = gewaehlt == schau.Index;
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
+            string knopfText = istGewaehlt ? "Dein Charakter" : "Diesen Charakter wählen";
+            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.14f, sh * 0.895f, sw * 0.28f, sh * 0.06f),
+                    knopfText, knopfStil) && !istGewaehlt)
+                PlayerPrefs.SetInt("NeonCatch_Charakter", schau.Index);
+
+            // Zurueck OBEN LINKS - schaltet die Vorschau wieder aus
+            if (ZurueckObenLinks())
+            {
+                zeigeCharaktere = false;
+                schau.SetzeAktiv(false);
+            }
+        }
+
         void OnGUI()
         {
             MenueSchrift.Anwenden();   // gleiche Schrift wie die TMP-UI
@@ -632,6 +715,12 @@ namespace NeonCatch
                     return;
                 }
 
+                if (zeigeCharaktere)
+                {
+                    ZeichneCharaktere(sw, sh);
+                    return;
+                }
+
                 if (zeigeSoloWahl)
                 {
                     ZeichneModusKarten(sw, sh, true);
@@ -682,15 +771,26 @@ namespace NeonCatch
                         "RUNDE BEITRETEN (Code eingeben)", knopfStil))
                     zeigeOnlineBeitritt = true;
 
-                // kleinere Schrift fuer die schmalen Buttons unten, damit der
-                // Text sicher hineinpasst
-                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
-                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.91f, sw * 0.125f, sh * 0.05f),
-                        "STEUERUNG", knopfStil))
+                // Untere Reihe: drei gleich breite Knoepfe (Charakter,
+                // Steuerung, Hilfe). Kleinere Schrift, damit alles hineinpasst.
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.02f);
+                float uReiheY = sh * 0.91f, uReiheH = sh * 0.05f;
+                float uReiheX = sw * 0.5f - sw * 0.13f;
+                float uBreite = sw * 0.0827f;      // (0.26 - 2*0.005) / 3
+                float uSchritt = uBreite + sw * 0.005f;
+
+                if (GUI.Button(new Rect(uReiheX, uReiheY, uBreite, uReiheH), "CHARAKTER", knopfStil))
+                {
+                    var schau = CharakterSchau.Hole();
+                    schau.SetzeAktiv(true);
+                    schau.Zeige(PlayerPrefs.GetInt("NeonCatch_Charakter", 0));
+                    zeigeCharaktere = true;
+                }
+
+                if (GUI.Button(new Rect(uReiheX + uSchritt, uReiheY, uBreite, uReiheH), "STEUERUNG", knopfStil))
                     zeigeSteuerung = true;
 
-                if (GUI.Button(new Rect(sw * 0.5f + sw * 0.005f, sh * 0.91f, sw * 0.125f, sh * 0.05f),
-                        "HILFE: ONLINE", knopfStil))
+                if (GUI.Button(new Rect(uReiheX + 2f * uSchritt, uReiheY, uBreite, uReiheH), "HILFE", knopfStil))
                 {
                     hilfeInhalt = NetzwerkHilfe.HostAnleitung;
                     hilfeZurueckZuBeitritt = false;
