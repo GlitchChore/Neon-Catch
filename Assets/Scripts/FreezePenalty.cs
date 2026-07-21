@@ -24,12 +24,18 @@ public class FreezePenalty : MonoBehaviourPun
     [Header("Bewegung")]
     public float tempo = 3.5f;
     public float mausEmpfindlichkeit = 0.12f;
+    public float sprungHoehe = 0.6f;
 
     CharacterController controller;
     SelfPaintSystem paint;
     Camera eigeneKamera;
     static GameObject soloSpieler;
     float yaw, pitch, vertikal;
+    bool imWasser;
+
+    void OnTriggerEnter(Collider o) { if (IstWasser(o)) imWasser = true; }
+    void OnTriggerExit(Collider o) { if (IstWasser(o)) imWasser = false; }
+    static bool IstWasser(Collider o) => o != null && o.isTrigger && o.name.Contains("Wasser");
 
     void Awake()
     {
@@ -105,6 +111,11 @@ public class FreezePenalty : MonoBehaviourPun
             Umschauen();
             Laufen();
         }
+        else if (imWasser)
+        {
+            // Eingefroren/Menue im Wasser: sanft auftreiben statt versinken
+            controller.Move(Vector3.up * 1f * Time.deltaTime);
+        }
         else
         {
             // Nur Schwerkraft, damit man nicht schwebt
@@ -130,8 +141,27 @@ public class FreezePenalty : MonoBehaviourPun
         if (kb == null) return;
         float x = (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f);
         float z = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
-        Vector3 richtung = (transform.right * x + transform.forward * z).normalized * tempo;
-        vertikal = controller.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
-        controller.Move((richtung + Vector3.up * vertikal) * Time.deltaTime);
+        Vector3 horizontal = (transform.right * x + transform.forward * z).normalized * tempo;
+
+        if (imWasser)
+        {
+            // Schwimmen: Leertaste hoch, Strg runter, sanfter Auftrieb -
+            // so kommt man auch wieder aus dem Burggraben heraus
+            float auf = (kb.spaceKey.isPressed ? 1f : 0f) - (kb.leftCtrlKey.isPressed ? 1f : 0f);
+            vertikal = 0f;
+            controller.Move((horizontal + Vector3.up * (auf * tempo + 1f)) * Time.deltaTime);
+            return;
+        }
+
+        // Springen (Leertaste) am Boden
+        if (controller.isGrounded)
+        {
+            vertikal = -1f;
+            if (kb.spaceKey.wasPressedThisFrame)
+                vertikal = Mathf.Sqrt(2f * sprungHoehe * 20f);
+        }
+        else vertikal -= 20f * Time.deltaTime;
+
+        controller.Move((horizontal + Vector3.up * vertikal) * Time.deltaTime);
     }
 }

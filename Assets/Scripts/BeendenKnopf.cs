@@ -1,14 +1,16 @@
 using Photon.Pun;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace NeonCatch
 {
     // ======================================================================
     // Roter "Spiel beenden"-Knopf oben rechts - startet sich in jeder Szene
     // selbst und ueberlebt Szenenwechsel (DontDestroyOnLoad).
-    // Erster Klick fragt nach ("Wirklich beenden?"), zweiter Klick schliesst
-    // das Spiel komplett. Laufende Online-Runden werden vorher sauber
-    // getrennt, damit Mitspieler nicht haengen bleiben.
+    // Erster Klick (oder Taste B) fragt nach ("Wirklich beenden?"), zweiter
+    // Klick/Taste B schliesst das Spiel komplett. So kommt man auch raus,
+    // wenn der Mauszeiger im Spiel gesperrt ist. Laufende Online-Runden
+    // werden vorher sauber getrennt.
     // ======================================================================
     public static class BeendenKnopfStart
     {
@@ -29,6 +31,23 @@ namespace NeonCatch
         bool bestaetigen;
         float bestaetigenBis;
 
+        void Update()
+        {
+            // Taste B = beenden (erst nachfragen, zweites B beendet) - auch
+            // wenn der Mauszeiger im Spiel gesperrt ist und der Knopf nicht
+            // klickbar waere
+            var kb = Keyboard.current;
+            if (kb != null && kb.bKey.wasPressedThisFrame)
+            {
+                if (!bestaetigen)
+                {
+                    bestaetigen = true;
+                    bestaetigenBis = Time.unscaledTime + 3f;
+                }
+                else Beende();
+            }
+        }
+
         void OnGUI()
         {
             if (stil == null)
@@ -42,7 +61,7 @@ namespace NeonCatch
             if (bestaetigen && Time.unscaledTime > bestaetigenBis)
                 bestaetigen = false;
 
-            string text = bestaetigen ? "Wirklich beenden?" : "Spiel beenden  X";
+            string text = bestaetigen ? "Wirklich beenden? (B)" : "Spiel beenden (B)";
             Color alt = GUI.backgroundColor;
             GUI.backgroundColor = bestaetigen ? new Color(1f, 0.25f, 0.2f) : new Color(0.7f, 0.12f, 0.12f);
 

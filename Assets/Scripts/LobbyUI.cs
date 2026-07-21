@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Photon.Pun;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -93,7 +94,7 @@ public class LobbyUI : MonoBehaviour
     Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
     Text hilfeInhaltText, beitretenStatusText;
-    GameObject sucherWartePanel;
+    GameObject sucherWartePanel, skipButton;
     Text sucherWarteText;
     RawImage hintergrundBild;
     Image weisserSchleier;
@@ -153,6 +154,13 @@ public class LobbyUI : MonoBehaviour
             ? GamePhaseManager.Instance.phase
             : SpielPhase.Lobby;
 
+        // Taste Z = zurueck (auch wenn der Mauszeiger im Spiel gesperrt ist).
+        // Y mit dabei, weil auf deutscher Tastatur die Z-Taste physisch dort
+        // liegt, wo das Input System "Y" erwartet.
+        var kb = Keyboard.current;
+        if (kb != null && (kb.zKey.wasPressedThisFrame || kb.yKey.wasPressedThisFrame))
+            GlobalerZurueck();
+
         // Hintergrundbild ueberall AUSSER im laufenden Spiel (Verstecken/Suchen)
         bool bildSichtbar = !(verbunden && (phase == SpielPhase.Verstecken || phase == SpielPhase.Suchen));
         if (hintergrundBild != null) hintergrundBild.enabled = bildSichtbar;
@@ -204,8 +212,11 @@ public class LobbyUI : MonoBehaviour
         }
         sucherWartePanel.SetActive(binSucherUndWartet);
         if (binSucherUndWartet)
+        {
             sucherWarteText.text = "DU BIST SUCHER\n\nDie anderen verstecken sich...\nNoch " +
                                    GamePhaseManager.Instance.restSekunden + "s";
+            skipButton.SetActive(PhotonNetwork.IsMasterClient);   // nur Host/Solo darf ueberspringen
+        }
     }
 
     static SelfPaintSystem LokalerSpieler()
@@ -555,8 +566,13 @@ public class LobbyUI : MonoBehaviour
         wartenRect.anchorMin = Vector2.zero;
         wartenRect.anchorMax = Vector2.one;
         wartenRect.sizeDelta = Vector2.zero;
-        sucherWarteText = Text(sucherWartePanel.transform, "", Vector2.zero, 34, Neon);
+        sucherWarteText = Text(sucherWartePanel.transform, "", new Vector2(0, 40), 34, Neon);
         sucherWarteText.rectTransform.sizeDelta = new Vector2(600, 200);
+        // Nur Host/Solo: Wartezeit ueberspringen (bei Bots muss man nicht warten)
+        skipButton = Knopf(sucherWartePanel.transform, "Verstecken überspringen", new Vector2(0, -110), () =>
+        {
+            if (GamePhaseManager.Instance != null) GamePhaseManager.Instance.UeberspringeVerstecken();
+        }).gameObject;
         sucherWartePanel.SetActive(false);
 
         // ---------- Verbinde-Panel (kein Startseiten-Flackern beim Erstellen/Beitreten) ----------
@@ -566,7 +582,7 @@ public class LobbyUI : MonoBehaviour
         verbindePanel.SetActive(false);
 
         // ---------- Immer sichtbarer Zurueck-Button oben links ----------
-        var zurueck = Knopf(canvas.transform, "< Zurück", Vector2.zero, GlobalerZurueck);
+        var zurueck = Knopf(canvas.transform, "< Zurück (Z)", Vector2.zero, GlobalerZurueck);
         var zr = zurueck.GetComponent<Image>().rectTransform;
         zr.anchorMin = zr.anchorMax = zr.pivot = new Vector2(0f, 1f);   // oben links
         zr.anchoredPosition = new Vector2(100f, -34f);

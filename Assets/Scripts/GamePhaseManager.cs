@@ -271,6 +271,13 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
         });
     }
 
+    /// <summary>Host/Solo: die Versteck-Wartezeit sofort beenden und suchen.</summary>
+    public void UeberspringeVerstecken()
+    {
+        if (!PhotonNetwork.IsMasterClient || phase != SpielPhase.Verstecken) return;
+        WechslePhase(SpielPhase.Suchen);
+    }
+
     void WechslePhase(SpielPhase neu)
     {
         int dauer = neu == SpielPhase.Verstecken ? versteckenDauer
