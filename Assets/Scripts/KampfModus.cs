@@ -640,15 +640,10 @@ namespace NeonCatch
                     return;
                 }
 
-                // Titel
+                // Kein gemalter Titel mehr - das Hintergrundbild zeigt selbst
+                // "NEON CATCH"
                 if (kartenTitelStil == null)
                     kartenTitelStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter };
-                kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.07f);
-                kartenTitelStil.normal.textColor = new Color(0.05f, 0.05f, 0.08f);
-                GUI.Label(new Rect(0f, sh * 0.12f, sw, sh * 0.1f), "NEON CATCH", kartenTitelStil);
-                kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.026f);
-                GUI.Label(new Rect(0f, sh * 0.22f, sw, sh * 0.05f),
-                          "Online mit Freunden - oder solo gegen Bots", kartenTitelStil);
 
                 // Profil: einfacher Name, wird online in der Lobby angezeigt
                 if (textStil == null)
