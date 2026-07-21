@@ -63,7 +63,7 @@ namespace NeonCatch
                 bestaetigen = false;
 
             // Gleiche neutrale Farbe wie alle anderen Knoepfe (kein Rot)
-            string text = bestaetigen ? "Wirklich beenden? (B)" : "Spiel beenden (B)";
+            string text = bestaetigen ? "Wirklich beenden?" : "Spiel beenden";
 
             float breite = Mathf.Max(sw * 0.11f, 150f);
             if (GUI.Button(new Rect(sw - breite - 10f, 10f, breite, sh * 0.05f), text, stil))

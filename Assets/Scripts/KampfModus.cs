@@ -279,6 +279,17 @@ namespace NeonCatch
             endText = text;
         }
 
+        // Einheitlicher Zurueck-Knopf OBEN LINKS (wie in der FARBMIMIK-UI) -
+        // liefert true, wenn er gedrueckt wurde
+        bool ZurueckObenLinks()
+        {
+            if (knopfStil == null)
+                knopfStil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, wordWrap = true };
+            knopfStil.fontSize = Mathf.RoundToInt(Screen.height * 0.024f);
+            return GUI.Button(new Rect(10f, 10f, Mathf.Max(Screen.width * 0.09f, 130f),
+                                       Screen.height * 0.05f), "< Zurück", knopfStil);
+        }
+
         void Update()
         {
             // Verbinde-Zustand beenden, sobald man im Raum ist oder ein Fehler kam
@@ -392,9 +403,7 @@ namespace NeonCatch
                 zeigeHilfe = true;
             }
 
-            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.52f, sw * 0.22f, sh * 0.06f),
-                    "ZURÜCK", knopfStil))
+            if (ZurueckObenLinks())
                 zeigeOnlineBeitritt = false;
         }
 
@@ -479,9 +488,8 @@ namespace NeonCatch
                 }
             }
 
-            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.028f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.08f, sh * 0.66f, sw * 0.16f, sh * 0.06f),
-                    "ZURÜCK", knopfStil))
+            // Zurueck OBEN LINKS statt unter den Modus-Karten
+            if (ZurueckObenLinks())
             {
                 zeigeModusWahl = false;
                 zeigeSoloWahl = false;
@@ -501,9 +509,7 @@ namespace NeonCatch
             GUI.Label(new Rect(sw * 0.5f - sw * 0.28f, sh * 0.04f, sw * 0.56f, sh * 0.76f),
                        hilfeInhalt, steuerungStil);
 
-            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.84f, sw * 0.22f, sh * 0.07f),
-                    "ZURÜCK", knopfStil))
+            if (ZurueckObenLinks())
             {
                 zeigeHilfe = false;
                 if (hilfeZurueckZuBeitritt)
@@ -525,9 +531,7 @@ namespace NeonCatch
             GUI.Label(new Rect(sw * 0.5f - sw * 0.28f, sh * 0.14f, sw * 0.56f, sh * 0.6f),
                        steuerungText, steuerungStil);
 
-            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.035f);
-            if (GUI.Button(new Rect(sw * 0.5f - sw * 0.11f, sh * 0.82f, sw * 0.22f, sh * 0.08f),
-                    "ZURÜCK", knopfStil))
+            if (ZurueckObenLinks())
                 zeigeSteuerung = false;
         }
 

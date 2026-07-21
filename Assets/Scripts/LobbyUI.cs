@@ -635,7 +635,7 @@ public class LobbyUI : MonoBehaviour
         verbindePanel.SetActive(false);
 
         // ---------- Immer sichtbarer Zurueck-Button oben links ----------
-        var zurueck = Knopf(canvas.transform, "< Zurück (Z)", Vector2.zero, GlobalerZurueck);
+        var zurueck = Knopf(canvas.transform, "< Zurück", Vector2.zero, GlobalerZurueck);
         zurueckButtonGO = zurueck.gameObject;
         var zr = zurueck.GetComponent<Image>().rectTransform;
         zr.anchorMin = zr.anchorMax = zr.pivot = new Vector2(0f, 1f);   // oben links
