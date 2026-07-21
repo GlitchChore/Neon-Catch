@@ -82,7 +82,15 @@ public class FreezePenalty : MonoBehaviourPun
 
     void Update()
     {
-        if (!photonView.IsMine || (paint != null && paint.istBot))
+        // Bots: passiv verstecken - AUSSER der Bot ist der SUCHER, dann jagt
+        // er in der Suchphase die Versteckten (laeuft auf dem MasterClient,
+        // dort ist das Raum-Objekt "IsMine")
+        if (paint != null && paint.istBot)
+        {
+            if (photonView.IsMine) BotSucherKI();
+            return;
+        }
+        if (!photonView.IsMine)
             return;
 
         var phasen = GamePhaseManager.Instance;
@@ -122,6 +130,37 @@ public class FreezePenalty : MonoBehaviourPun
             vertikal = controller.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
             controller.Move(Vector3.up * vertikal * Time.deltaTime);
         }
+    }
+
+    // Bot als SUCHER: laeuft in der Suchphase auf den naechsten noch nicht
+    // gefundenen Versteckten zu - gefangen wird automatisch ueber den
+    // 2-Meter-Radius (GamePhaseManager.PruefeFangen).
+    void BotSucherKI()
+    {
+        var pm = GamePhaseManager.Instance;
+        if (pm == null || pm.phase != SpielPhase.Suchen || !pm.IstSucher(photonView.ViewID))
+            return;
+
+        SelfPaintSystem ziel = null;
+        float beste = float.MaxValue;
+        foreach (var s in Object.FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None))
+        {
+            if (s.gefunden || s.photonView.ViewID == photonView.ViewID) continue;
+            float d = Vector3.Distance(transform.position, s.transform.position);
+            if (d < beste) { beste = d; ziel = s; }
+        }
+        if (ziel == null) return;
+
+        Vector3 richtung = ziel.transform.position - transform.position;
+        richtung.y = 0f;
+        if (richtung.sqrMagnitude > 0.01f)
+        {
+            richtung.Normalize();
+            transform.rotation = Quaternion.Slerp(transform.rotation,
+                Quaternion.LookRotation(richtung), Time.deltaTime * 4f);
+        }
+        vertikal = controller.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
+        controller.Move((richtung * (tempo * 0.8f) + Vector3.up * vertikal) * Time.deltaTime);
     }
 
     void Umschauen()

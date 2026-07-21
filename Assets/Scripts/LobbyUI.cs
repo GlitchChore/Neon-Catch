@@ -101,6 +101,9 @@ public class LobbyUI : MonoBehaviour
     Image weisserSchleier;
     GameObject verbindePanel;
     bool verbindetGerade;
+    GameObject soloWahlPanel;
+    SoloSucherWahl soloSucherWahl;
+    bool soloStartAusstehend;
     string zuletztGezeigterFehler = "";
     TMP_InputField codeFeld;
     TMP_Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText, platzierungenText;
@@ -138,6 +141,13 @@ public class LobbyUI : MonoBehaviour
 
     void StarteSolo()
     {
+        StarteSoloMit(SoloSucherWahl.Zufaellig);
+    }
+
+    // Solo: Offline-Raum + Runde startet automatisch SOFORT (siehe Update),
+    // sobald die eigene Figur da ist - keine Lobby dazwischen.
+    void StarteSoloMit(SoloSucherWahl wahl)
+    {
         if (Resources.Load<GameObject>("Spieler") == null)
         {
             ZeigeHilfe("SPIELER-PREFAB FEHLT!\n\nIn Unity einmal neu kompilieren lassen\n" +
@@ -145,6 +155,9 @@ public class LobbyUI : MonoBehaviour
                        "Tools > FARBMIMIK > Netzwerk-Prefabs erstellen klicken.");
             return;
         }
+        soloSucherWahl = wahl;
+        soloStartAusstehend = true;
+        if (soloWahlPanel != null) soloWahlPanel.SetActive(false);
         PhotonRoomManager.Instanz.StarteSolo("farbmimik", "Spieler");
     }
 
@@ -184,11 +197,24 @@ public class LobbyUI : MonoBehaviour
             verbindetGerade = false;
         verbindePanel.SetActive(verbindetGerade);
 
-        hauptPanel.SetActive(!verbunden && !verbindetGerade && !beitretenPanel.activeSelf && !hilfePanel.activeSelf);
+        // Solo: sobald die eigene Figur da ist, Runde SOFORT starten (keine Lobby)
+        if (soloStartAusstehend && verbunden && PhotonRoomManager.IstSolo &&
+            GamePhaseManager.Instance != null && GamePhaseManager.Instance.phase == SpielPhase.Lobby &&
+            LokalerSpieler() != null)
+        {
+            soloStartAusstehend = false;
+            GamePhaseManager.Instance.StarteSpielSolo(soloSucherWahl);
+        }
+
+        hauptPanel.SetActive(!verbunden && !verbindetGerade && !beitretenPanel.activeSelf &&
+                             !hilfePanel.activeSelf && !soloWahlPanel.activeSelf);
         if (verbunden && beitretenPanel.activeSelf)
             beitretenPanel.SetActive(false);
+        if (verbunden && soloWahlPanel.activeSelf)
+            soloWahlPanel.SetActive(false);
 
-        lobbyPanel.SetActive(verbunden && phase == SpielPhase.Lobby);
+        // Waehrend der Solo-Sofortstart laeuft, die Lobby gar nicht erst zeigen
+        lobbyPanel.SetActive(verbunden && phase == SpielPhase.Lobby && !soloStartAusstehend);
         hudPanel.SetActive(verbunden && (phase == SpielPhase.Verstecken || phase == SpielPhase.Suchen));
         endePanel.SetActive(verbunden && phase == SpielPhase.Ende);
 
@@ -421,8 +447,13 @@ public class LobbyUI : MonoBehaviour
         nameFeld.text = PlayerPrefs.GetString("NeonCatch_SpielerName", "");
         nameFeld.onValueChanged.AddListener(wert => SpielerProfil.Name = wert);
 
-        // Solo gegen Bots - OHNE Code, laeuft offline
-        Knopf(hauptPanel.transform, "Solo gegen Bots", new Vector2(0, 82), StarteSolo);
+        // Solo gegen Bots - OHNE Code, offline: erst Sucher waehlen, dann
+        // startet die Runde SOFORT (keine Lobby dazwischen)
+        Knopf(hauptPanel.transform, "Solo gegen Bots", new Vector2(0, 82), () =>
+        {
+            hauptPanel.SetActive(false);
+            soloWahlPanel.SetActive(true);
+        });
 
         Knopf(hauptPanel.transform, "Online: Runde erstellen", new Vector2(0, 24), () =>
         {
@@ -576,6 +607,20 @@ public class LobbyUI : MonoBehaviour
         }).gameObject;
         sucherWartePanel.SetActive(false);
 
+        // ---------- Solo-Auswahl: Wer ist der Sucher? ----------
+        soloWahlPanel = Panel(canvas.transform, "SoloWahlPanel", 420, 360);
+        Text(soloWahlPanel.transform, "SOLO GEGEN BOTS", new Vector2(0, 140), 30, Neon);
+        Text(soloWahlPanel.transform, "Wer ist der Sucher?", new Vector2(0, 95), 20, Color.white);
+        Knopf(soloWahlPanel.transform, "Zufällig", new Vector2(0, 40), () => StarteSoloMit(SoloSucherWahl.Zufaellig));
+        Knopf(soloWahlPanel.transform, "Bot 1", new Vector2(0, -20), () => StarteSoloMit(SoloSucherWahl.Bot1));
+        Knopf(soloWahlPanel.transform, "Ich selbst", new Vector2(0, -80), () => StarteSoloMit(SoloSucherWahl.IchSelbst));
+        Knopf(soloWahlPanel.transform, "Zurück", new Vector2(0, -140), () =>
+        {
+            soloWahlPanel.SetActive(false);
+            hauptPanel.SetActive(true);
+        });
+        soloWahlPanel.SetActive(false);
+
         // ---------- Verbinde-Panel (kein Startseiten-Flackern beim Erstellen/Beitreten) ----------
         verbindePanel = Panel(canvas.transform, "VerbindePanel", 420, 160);
         Text(verbindePanel.transform, "Verbinde mit dem Server ...", new Vector2(0, 20), 24, Neon);
@@ -597,6 +642,12 @@ public class LobbyUI : MonoBehaviour
     void GlobalerZurueck()
     {
         if (hilfePanel.activeSelf) { hilfePanel.SetActive(false); return; }
+        if (soloWahlPanel.activeSelf)
+        {
+            soloWahlPanel.SetActive(false);
+            hauptPanel.SetActive(true);
+            return;
+        }
         if (beitretenPanel.activeSelf)
         {
             beitretenPanel.SetActive(false);

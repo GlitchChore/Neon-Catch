@@ -13,6 +13,9 @@ public enum SpielPhase : byte
     Ende
 }
 
+/// <summary>Solo-Auswahl: wer soll der Sucher sein?</summary>
+public enum SoloSucherWahl { Zufaellig, Bot1, IchSelbst }
+
 /// <summary>
 /// Steuert die FARBMIMIK-Phasen - der MasterClient rechnet, alle lesen ueber
 /// Photon Room Custom Properties mit. Ablauf wie beim Schiess-Spiel, nur:
@@ -200,6 +203,37 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
         gefundenReihenfolge.Clear();
         SpawneFehlendeBots();
         WaehleSucher();
+        WechslePhase(SpielPhase.Verstecken);
+    }
+
+    /// <summary>Solo gegen Bots: Runde SOFORT starten (keine Lobby) - Sucher
+    /// ist je nach Wahl du selbst, Bot 1 oder zufaellig irgendwer.</summary>
+    public void StarteSpielSolo(SoloSucherWahl wahl)
+    {
+        if (!PhotonNetwork.IsMasterClient || phase != SpielPhase.Lobby) return;
+
+        gefundenReihenfolge.Clear();
+        SpawneFehlendeBots();
+
+        var alle = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None);
+        var mensch = alle.FirstOrDefault(s => !s.istBot);
+        var bots = alle.Where(s => s.istBot).ToList();
+
+        int sucherId = 0;
+        switch (wahl)
+        {
+            case SoloSucherWahl.IchSelbst:
+                if (mensch != null) sucherId = mensch.photonView.ViewID;
+                break;
+            case SoloSucherWahl.Bot1:
+                if (bots.Count > 0) sucherId = bots[0].photonView.ViewID;
+                break;
+            default:   // Zufaellig: irgendwer (du oder ein Bot)
+                if (alle.Length > 0) sucherId = alle[Random.Range(0, alle.Length)].photonView.ViewID;
+                break;
+        }
+
+        Setze(new Hashtable { { K_SUCHER, sucherId } });
         WechslePhase(SpielPhase.Verstecken);
     }
 

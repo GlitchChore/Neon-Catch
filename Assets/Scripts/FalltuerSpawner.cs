@@ -221,9 +221,35 @@ namespace NeonCatch
                 if (!PlatzFrei(pos)) continue;                    // nicht in Bauernhäuser bauen
                 if (ZuNahAnAnderen(belegt, pos, mindestAbstandLandschaft)) continue;
 
+                // KEINE Hütte am Hang/Map-Rand: die Stelle selbst muss eben sein
+                // (Boden-Normale fast senkrecht) UND die Umgebung ringsum darf
+                // nicht stark ansteigen (der steile Rand-Hügel faellt sonst
+                // durch, wenn die Map-Grenzen beim Hütten-Bau noch nicht
+                // gesetzt sind)
+                if (Vector3.Angle(hit.normal, Vector3.up) > 10f) continue;
+                if (!UmgebungIstFlach(pos, maske)) continue;
+
                 return pos;
             }
             return null;
+        }
+
+        // Prueft 4 Punkte rings um die Position: weicht die Bodenhoehe dort
+        // deutlich ab, steht man am Hang oder an der Rand-Steigung -> kein
+        // Platz fuer eine Hütte.
+        static bool UmgebungIstFlach(Vector3 pos, LayerMask maske)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                float w = i * 90f * Mathf.Deg2Rad;
+                Vector3 p = pos + new Vector3(Mathf.Cos(w), 0f, Mathf.Sin(w)) * 2f;
+                if (!Physics.Raycast(p + Vector3.up * 30f, Vector3.down, out RaycastHit hit,
+                        100f, maske, QueryTriggerInteraction.Ignore))
+                    return false;
+                if (Mathf.Abs(hit.point.y - pos.y) > 0.5f)
+                    return false;
+            }
+            return true;
         }
 
         static bool ZuNahAnAnderen(System.Collections.Generic.List<Vector3> belegt, Vector3 pos, float mindestAbstand)
