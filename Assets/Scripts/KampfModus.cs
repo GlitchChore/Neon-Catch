@@ -533,6 +533,8 @@ namespace NeonCatch
 
         void OnGUI()
         {
+            MenueSchrift.Anwenden();   // gleiche Schrift wie die TMP-UI
+
             // Waehrend des Verbindens NUR "Verbinde..." zeigen - kein Startmenue-Flackern
             if (KampfOnline.Verbindet && !PhotonNetwork.InRoom)
             {

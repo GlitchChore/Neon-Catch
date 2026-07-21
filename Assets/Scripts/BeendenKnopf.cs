@@ -50,6 +50,7 @@ namespace NeonCatch
 
         void OnGUI()
         {
+            MenueSchrift.Anwenden();   // gleiche Schrift wie die TMP-UI
             if (stil == null)
                 stil = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold };
 

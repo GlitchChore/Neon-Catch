@@ -842,6 +842,7 @@ namespace NeonCatch
 
         void OnGUI()
         {
+            MenueSchrift.Anwenden();   // gleiche Schrift wie die TMP-UI
             if (!(photonView.IsMine && !istBot)) return;
 
             if (hudStil == null)
