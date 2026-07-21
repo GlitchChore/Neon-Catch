@@ -14,7 +14,7 @@ public enum SpielPhase : byte
 }
 
 /// <summary>Solo-Auswahl: wer soll der Sucher sein?</summary>
-public enum SoloSucherWahl { Zufaellig, Bot1, IchSelbst }
+public enum SoloSucherWahl { Zufaellig, IrgendeinBot, IchSelbst }
 
 /// <summary>
 /// Steuert die FARBMIMIK-Phasen - der MasterClient rechnet, alle lesen ueber
@@ -207,7 +207,7 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
     }
 
     /// <summary>Solo gegen Bots: Runde SOFORT starten (keine Lobby) - Sucher
-    /// ist je nach Wahl du selbst, Bot 1 oder zufaellig irgendwer.</summary>
+    /// ist je nach Wahl du selbst, irgendein Bot oder zufaellig irgendwer.</summary>
     public void StarteSpielSolo(SoloSucherWahl wahl)
     {
         if (!PhotonNetwork.IsMasterClient || phase != SpielPhase.Lobby) return;
@@ -225,8 +225,8 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
             case SoloSucherWahl.IchSelbst:
                 if (mensch != null) sucherId = mensch.photonView.ViewID;
                 break;
-            case SoloSucherWahl.Bot1:
-                if (bots.Count > 0) sucherId = bots[0].photonView.ViewID;
+            case SoloSucherWahl.IrgendeinBot:
+                if (bots.Count > 0) sucherId = bots[Random.Range(0, bots.Count)].photonView.ViewID;
                 break;
             default:   // Zufaellig: irgendwer (du oder ein Bot)
                 if (alle.Length > 0) sucherId = alle[Random.Range(0, alle.Length)].photonView.ViewID;
@@ -245,7 +245,7 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
 
         int neu = 0;
         if (gewaehlterSucher == -1 && bots.Count > 0)
-            neu = bots[0].photonView.ViewID;   // Bot 1 sucht (Bots wurden gerade gespawnt)
+            neu = bots[Random.Range(0, bots.Count)].photonView.ViewID;   // irgendein Bot sucht
         else if (gewaehlterSucher > 0 && menschen.Any(s => s.photonView.ViewID == gewaehlterSucher))
             neu = gewaehlterSucher;            // bestimmter Spieler
         else if (menschen.Length > 0)

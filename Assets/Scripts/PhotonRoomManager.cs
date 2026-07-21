@@ -86,6 +86,24 @@ public class PhotonRoomManager : MonoBehaviourPunCallbacks
         wartetAufPrefab = prefabName;
         wartetAufMaxSpieler = 1;
         RoomCode = "SOLO";
+        StartCoroutine(StarteSoloAblauf());
+    }
+
+    // Beim Spielstart verbindet sich das Spiel automatisch mit dem Photon-
+    // Server (fuer Online). Der Offline-Modus laesst sich aber NICHT
+    // einschalten, solange diese Verbindung noch steht ("Can't start OFFLINE
+    // mode while connected!") - genau daran ist FARBMIMIK-Solo bisher
+    // gescheitert. Also: erst sauber trennen, dann offline gehen.
+    IEnumerator StarteSoloAblauf()
+    {
+        if (PhotonNetwork.IsConnected && !PhotonNetwork.OfflineMode)
+        {
+            PhotonNetwork.Disconnect();
+            float timeout = Time.time + 5f;
+            while (PhotonNetwork.IsConnected && Time.time < timeout)
+                yield return null;
+        }
+
         PhotonNetwork.OfflineMode = true;   // ab jetzt alles lokal, kein Server
         PhotonNetwork.CreateRoom("SOLO");   // offline: OnJoinedRoom feuert sofort
     }

@@ -104,6 +104,10 @@ public class LobbyUI : MonoBehaviour
     GameObject zurueckButtonGO;
     SoloSucherWahl soloSucherWahl;
     bool soloStartAusstehend;
+    // Kam der Spieler aus dem NEON-BLASTER-Menue (Vorwahl schon getroffen)?
+    // Dann wurde das FARBMIMIK-Hauptmenue uebersprungen und "Zurueck" muss
+    // wieder zu NEON BLASTER fuehren - nicht zu einer nie gezeigten Seite.
+    bool vomAnderenModus;
     string zuletztGezeigterFehler = "";
     TMP_InputField codeFeld;
     TMP_Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText, platzierungenText;
@@ -130,11 +134,13 @@ public class LobbyUI : MonoBehaviour
         if (PlayerPrefs.GetInt("NeonCatch_AutoSolo", 0) == 1)
         {
             PlayerPrefs.SetInt("NeonCatch_AutoSolo", 0);
+            vomAnderenModus = true;
             soloWahlPanel.SetActive(true);
         }
         else if (PlayerPrefs.GetInt("NeonCatch_AutoHost", 0) == 1)
         {
             PlayerPrefs.SetInt("NeonCatch_AutoHost", 0);
+            vomAnderenModus = true;
             if (Resources.Load<GameObject>("Spieler") != null)
             {
                 verbindetGerade = true;   // Hauptmenue nicht kurz aufblitzen lassen
@@ -199,7 +205,9 @@ public class LobbyUI : MonoBehaviour
         // Verbinde-Zustand beenden, sobald man im Raum ist oder ein Fehler kam
         if (verbindetGerade && (verbunden || PhotonRoomManager.FehlerText != ""))
             verbindetGerade = false;
-        verbindePanel.SetActive(verbindetGerade);
+        // Warte-Bildschirm auch beim Solo-Start (erst online trennen, dann
+        // offline gehen dauert kurz - solange soll nichts anderes aufblitzen)
+        verbindePanel.SetActive(verbindetGerade || (soloStartAusstehend && !verbunden));
 
         // Solo kennt KEINE Lobby: sobald die eigene Figur da ist (Start) oder
         // die Phase nach einer Runde auf Lobby zurueckfaellt ("Nochmal"),
@@ -212,7 +220,8 @@ public class LobbyUI : MonoBehaviour
             GamePhaseManager.Instance.StarteSpielSolo(soloSucherWahl);
         }
 
-        hauptPanel.SetActive(!verbunden && !verbindetGerade && !beitretenPanel.activeSelf &&
+        hauptPanel.SetActive(!verbunden && !verbindetGerade && !soloStartAusstehend &&
+                             !beitretenPanel.activeSelf &&
                              !hilfePanel.activeSelf && !soloWahlPanel.activeSelf);
         if (verbunden && beitretenPanel.activeSelf)
             beitretenPanel.SetActive(false);
@@ -308,7 +317,7 @@ public class LobbyUI : MonoBehaviour
             string name = "Zufällig";
             if (gw == -1)
             {
-                name = "Bot 1";
+                name = "Irgendein Bot";
             }
             else if (gw != 0)
             {
@@ -328,7 +337,7 @@ public class LobbyUI : MonoBehaviour
         }
     }
 
-    // Host waehlt den Sucher durch: Zufaellig -> Bot 1 -> Spieler1 -> ... -> Zufaellig
+    // Host waehlt den Sucher durch: Zufaellig -> Irgendein Bot -> Spieler1 -> ... -> Zufaellig
     void SucherWahlWechseln()
     {
         if (!PhotonNetwork.IsMasterClient || GamePhaseManager.Instance == null) return;
@@ -529,12 +538,7 @@ public class LobbyUI : MonoBehaviour
         var beitretenHilfe = Knopf(beitretenPanel.transform, "Hilfe: Was muss ich machen?",
             new Vector2(0, -110), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
         beitretenHilfe.GetComponentInChildren<TMP_Text>().color = new Color(1f, 0.7f, 0.2f);
-        Knopf(beitretenPanel.transform, "Zurück", new Vector2(0, -165), () =>
-        {
-            beitretenPanel.SetActive(false);
-            beitretenStatusText.text = "";
-            hauptPanel.SetActive(true);
-        });
+        // Zurueck gibt es nur oben links (ein einziger Zurueck-Knopf im ganzen Spiel)
         beitretenPanel.SetActive(false);
 
         // ---------- Lobby ----------
@@ -570,7 +574,7 @@ public class LobbyUI : MonoBehaviour
             if (PhotonNetwork.IsMasterClient)
                 GamePhaseManager.Instance.StarteSpiel();
         }).gameObject;
-        Knopf(lobbyPanel.transform, "Verlassen", new Vector2(0, -215), TrenneVerbindung);
+        // "Verlassen" entfaellt - der Zurueck-Knopf oben links verlaesst den Raum
         lobbyPanel.SetActive(false);
 
         // ---------- Spiel-HUD ----------
@@ -593,12 +597,12 @@ public class LobbyUI : MonoBehaviour
         platzierungenText = Text(endePanel.transform, "", new Vector2(0, 60), 20, Color.white);
         platzierungenText.alignment = TextAlignmentOptions.Top;
         platzierungenText.rectTransform.sizeDelta = new Vector2(400, 220);
-        nochmalButton = Knopf(endePanel.transform, "Zurück zur Lobby", new Vector2(0, -160), () =>
+        nochmalButton = Knopf(endePanel.transform, "Nochmal spielen", new Vector2(0, -190), () =>
         {
             if (PhotonNetwork.IsMasterClient)
                 GamePhaseManager.Instance.ZurueckZurLobby();
         }).gameObject;
-        Knopf(endePanel.transform, "Verlassen", new Vector2(0, -220), TrenneVerbindung);
+        // "Verlassen" entfaellt - der Zurueck-Knopf oben links verlaesst den Raum
         endePanel.SetActive(false);
 
         // ---------- Hilfe: Beschreibungen auf leicht weissem Grund ----------
@@ -607,7 +611,7 @@ public class LobbyUI : MonoBehaviour
         hilfeInhaltText = Text(hilfePanel.transform, "", new Vector2(0, 10), 17, new Color(0.1f, 0.1f, 0.12f));
         hilfeInhaltText.alignment = TextAlignmentOptions.Top;
         hilfeInhaltText.rectTransform.sizeDelta = new Vector2(520, 320);
-        Knopf(hilfePanel.transform, "Zurück", new Vector2(0, -180), () => hilfePanel.SetActive(false));
+        // Zurueck gibt es nur oben links (schliesst auch die Hilfe)
         hilfePanel.SetActive(false);
 
         // ---------- Sucher-Wartebildschirm (voller schwarzer Bildschirm) ----------
@@ -632,19 +636,14 @@ public class LobbyUI : MonoBehaviour
         soloWahlPanel = Panel(canvas.transform, "SoloWahlPanel", 420, 360);
         Text(soloWahlPanel.transform, "SOLO GEGEN BOTS", new Vector2(0, 140), 30, Neon);
         Text(soloWahlPanel.transform, "Wer ist der Sucher?", new Vector2(0, 95), 20, Color.white);
-        Knopf(soloWahlPanel.transform, "Zufällig", new Vector2(0, 40), () => StarteSoloMit(SoloSucherWahl.Zufaellig));
-        Knopf(soloWahlPanel.transform, "Bot 1", new Vector2(0, -20), () => StarteSoloMit(SoloSucherWahl.Bot1));
-        Knopf(soloWahlPanel.transform, "Ich selbst", new Vector2(0, -80), () => StarteSoloMit(SoloSucherWahl.IchSelbst));
-        Knopf(soloWahlPanel.transform, "Zurück", new Vector2(0, -140), () =>
-        {
-            soloWahlPanel.SetActive(false);
-            hauptPanel.SetActive(true);
-        });
+        Knopf(soloWahlPanel.transform, "Zufällig", new Vector2(0, 45), () => StarteSoloMit(SoloSucherWahl.Zufaellig));
+        Knopf(soloWahlPanel.transform, "Irgendein Bot", new Vector2(0, -15), () => StarteSoloMit(SoloSucherWahl.IrgendeinBot));
+        Knopf(soloWahlPanel.transform, "Ich selbst", new Vector2(0, -75), () => StarteSoloMit(SoloSucherWahl.IchSelbst));
         soloWahlPanel.SetActive(false);
 
-        // ---------- Verbinde-Panel (kein Startseiten-Flackern beim Erstellen/Beitreten) ----------
+        // ---------- Verbinde-/Warte-Panel (kein Startseiten-Flackern) ----------
         verbindePanel = Panel(canvas.transform, "VerbindePanel", 420, 160);
-        Text(verbindePanel.transform, "Verbinde mit dem Server ...", new Vector2(0, 20), 24, Neon);
+        Text(verbindePanel.transform, "Runde wird gestartet ...", new Vector2(0, 20), 24, Neon);
         Text(verbindePanel.transform, "einen Moment bitte", new Vector2(0, -25), 16, Color.white);
         verbindePanel.SetActive(false);
 
@@ -658,15 +657,27 @@ public class LobbyUI : MonoBehaviour
         zurueck.transform.SetAsLastSibling();   // ueber allem anderen
     }
 
-    // Kontext-abhaengiges "Zurueck": schliesst Hilfe, geht von Beitreten
-    // zurueck ins Hauptmenue, verlaesst einen Raum, oder wechselt vom
-    // Hauptmenue zurueck zu NEON BLASTER.
+    // DER einzige Zurueck-Knopf (oben links). Fuehrt immer genau eine Seite
+    // zurueck - dorthin, wo man WIRKLICH herkam. Wer aus dem NEON-BLASTER-
+    // Menue kam (vomAnderenModus), hat das FARBMIMIK-Hauptmenue nie gesehen;
+    // fuer den geht es darum direkt zurueck zu NEON BLASTER.
     void GlobalerZurueck()
     {
+        // Hilfe ist nur ein Overlay - schliesst sich einfach wieder
         if (hilfePanel.activeSelf) { hilfePanel.SetActive(false); return; }
+
+        // Gerade beim Verbinden (Runde erstellen/beitreten): Vorgang abbrechen
+        if (verbindetGerade)
+        {
+            verbindetGerade = false;
+            if (vomAnderenModus) { ZurueckZuNeonBlaster(); return; }
+            hauptPanel.SetActive(true);
+            return;
+        }
         if (soloWahlPanel.activeSelf)
         {
             soloWahlPanel.SetActive(false);
+            if (vomAnderenModus) { ZurueckZuNeonBlaster(); return; }
             hauptPanel.SetActive(true);
             return;
         }
@@ -674,15 +685,34 @@ public class LobbyUI : MonoBehaviour
         {
             beitretenPanel.SetActive(false);
             beitretenStatusText.text = "";
+            if (vomAnderenModus) { ZurueckZuNeonBlaster(); return; }
             hauptPanel.SetActive(true);
             return;
         }
-        if (PhotonNetwork.InRoom) { TrenneVerbindung(); return; }   // Lobby/Ende -> Raum verlassen
+        if (PhotonNetwork.InRoom)   // Lobby/laufende Runde/Ende -> Raum verlassen
+        {
+            if (vomAnderenModus) { ZurueckZuNeonBlaster(); return; }
+            TrenneVerbindung();     // zurueck ins FARBMIMIK-Hauptmenue
+            return;
+        }
 
-        // Hauptmenue: zurueck in die NEON-BLASTER-Szene
+        // FARBMIMIK-Hauptmenue: zurueck in die NEON-BLASTER-Szene
+        ZurueckZuNeonBlaster();
+    }
+
+    // Verlaesst eine eventuelle Runde und wechselt in die NEON-BLASTER-Szene.
+    void ZurueckZuNeonBlaster()
+    {
+        if (PhotonNetwork.InRoom || PhotonNetwork.OfflineMode)
+            PhotonRoomManager.Instanz.VerlasseRaum();
+
         string ziel = PlayerPrefs.GetString("NeonCatch_HauptSzene", "SampleScene");
         if (Application.CanStreamedLevelBeLoaded(ziel))
             SceneManager.LoadScene(ziel);
+        else
+            ZeigeHilfe("Szene '" + ziel + "' wurde nicht gefunden!\n\n" +
+                       "In Unity: File > Build Settings öffnen und beide\n" +
+                       "Szenen in die Liste ziehen. Dann klappt der Wechsel.");
     }
 
     void ZeigeHilfe(string inhalt)
