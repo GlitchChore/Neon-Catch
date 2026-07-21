@@ -66,6 +66,18 @@ namespace NeonCatch
             tf.alignment = TextAnchor.MiddleLeft;
             tf.padding = new RectOffset(10, 10, 4, 6);
             tf.clipping = TextClipping.Overflow;
+
+            // SICHERHEITSNETZ: Labels duerfen ihre Farbe NIE wechseln.
+            // Hover-/Aktiv-/Fokus-Zustaende bekommen keinerlei eigenen
+            // Hintergrund und dieselbe dunkle Schriftfarbe wie die Menues -
+            // damit kann beim Drueberfahren nichts mehr umschlagen.
+            var lb = GUI.skin.label;
+            lb.hover.background = null;
+            lb.active.background = null;
+            lb.focused.background = null;
+            lb.hover.textColor = schwarz;
+            lb.active.textColor = schwarz;
+            lb.focused.textColor = schwarz;
             tf.normal.textColor = schwarz;
             tf.hover.textColor = schwarz;
             tf.focused.textColor = schwarz;
