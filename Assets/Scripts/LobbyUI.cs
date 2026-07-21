@@ -719,25 +719,29 @@ public class LobbyUI : MonoBehaviour
         var go = new GameObject("Button_" + beschriftung);
         go.transform.SetParent(eltern, false);
         var bild = go.AddComponent<Image>();
-        bild.color = new Color(0.12f, 0.12f, 0.18f, 1f);
+        // HELLE Knopf-Flaeche mit SCHWARZER Schrift - beim Drueberfahren wird
+        // die Flaeche nur etwas dunkler, die Schrift bleibt immer schwarz und
+        // damit gut lesbar (vorher: Neon-Hover machte weisse Schrift unlesbar)
+        bild.color = new Color(0.85f, 0.85f, 0.88f, 1f);
         bild.rectTransform.anchoredPosition = position;
         bild.rectTransform.sizeDelta = new Vector2(280, 52);
 
         var button = go.AddComponent<Button>();
         button.targetGraphic = bild;
         var farben = button.colors;
-        farben.highlightedColor = Neon;
-        farben.pressedColor = new Color(0.05f, 0.5f, 0.5f);
+        farben.highlightedColor = new Color(0.88f, 0.92f, 0.94f);
+        farben.pressedColor = new Color(0.72f, 0.78f, 0.80f);
         button.colors = farben;
         button.onClick.AddListener(aktion);
 
         // Text passt sich automatisch der Button-Groesse an (schrumpft bei
         // langen Beschriftungen, statt ueber den Rand zu laufen)
-        var text = Text(go.transform, beschriftung, Vector2.zero, 22, Color.white);
+        var text = Text(go.transform, beschriftung, Vector2.zero, 22, new Color(0.06f, 0.06f, 0.08f));
         text.rectTransform.sizeDelta = bild.rectTransform.sizeDelta - new Vector2(16, 6);
         text.enableAutoSizing = true;
         text.fontSizeMax = 20;
         text.fontSizeMin = 9;
+        text.outlineWidth = 0f;   // schwarzer Text braucht keinen dunklen Umriss
         return button;
     }
 

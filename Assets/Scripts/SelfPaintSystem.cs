@@ -348,7 +348,7 @@ public class SelfPaintSystem : MonoBehaviourPun
         for (int i = 0; i < stiftKnoepfe.Length; i++)
             stiftKnoepfe[i].color = i == pinsel
                 ? new Color(0.1f, 0.9f, 0.9f)          // gewaehlter Stift: Neon
-                : new Color(0.15f, 0.15f, 0.2f);
+                : new Color(0.85f, 0.85f, 0.88f);   // helle Flaeche wie alle Knoepfe
         hinweisText.text = "Stift: " + PinselNamen[pinsel] + "  -  [E] schließt und übernimmt";
     }
 
@@ -426,7 +426,7 @@ public class SelfPaintSystem : MonoBehaviourPun
             var t = tGO.AddComponent<TextMeshProUGUI>();
             t.text = PinselNamen[i];
             t.fontSize = 20;
-            t.color = Color.white;
+            t.color = new Color(0.06f, 0.06f, 0.08f);   // immer schwarze Schrift
             t.alignment = TextAlignmentOptions.Center;
             t.rectTransform.sizeDelta = kRect.sizeDelta;
 
@@ -444,7 +444,7 @@ public class SelfPaintSystem : MonoBehaviourPun
         var fGO = new GameObject("Fuellen");
         fGO.transform.SetParent(farbPanel.transform, false);
         var fBild = fGO.AddComponent<Image>();
-        fBild.color = new Color(0.15f, 0.15f, 0.2f);
+        fBild.color = new Color(0.85f, 0.85f, 0.88f);
         fBild.rectTransform.anchoredPosition = new Vector2(155, -125);
         fBild.rectTransform.sizeDelta = new Vector2(150, 44);
         var fKnopf = fGO.AddComponent<Button>();
@@ -455,7 +455,7 @@ public class SelfPaintSystem : MonoBehaviourPun
         var fT = fTGO.AddComponent<TextMeshProUGUI>();
         fT.text = "Alles füllen";
         fT.fontSize = 18;
-        fT.color = Color.white;
+        fT.color = new Color(0.06f, 0.06f, 0.08f);
         fT.alignment = TextAlignmentOptions.Center;
         fT.rectTransform.sizeDelta = fBild.rectTransform.sizeDelta;
 
