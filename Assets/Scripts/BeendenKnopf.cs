@@ -62,9 +62,8 @@ namespace NeonCatch
             if (bestaetigen && Time.unscaledTime > bestaetigenBis)
                 bestaetigen = false;
 
+            // Gleiche neutrale Farbe wie alle anderen Knoepfe (kein Rot)
             string text = bestaetigen ? "Wirklich beenden? (B)" : "Spiel beenden (B)";
-            Color alt = GUI.backgroundColor;
-            GUI.backgroundColor = bestaetigen ? new Color(1f, 0.25f, 0.2f) : new Color(0.7f, 0.12f, 0.12f);
 
             float breite = Mathf.Max(sw * 0.11f, 150f);
             if (GUI.Button(new Rect(sw - breite - 10f, 10f, breite, sh * 0.05f), text, stil))
@@ -79,7 +78,6 @@ namespace NeonCatch
                     Beende();
                 }
             }
-            GUI.backgroundColor = alt;
         }
 
         void Beende()
