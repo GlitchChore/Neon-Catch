@@ -61,6 +61,11 @@ namespace NeonCatch
             tf.hover.background = texNormal;
             tf.focused.background = texHover;
             tf.active.background = texHover;
+            // Text vertikal mittig mit Luft nach unten - sonst werden
+            // Unterlaengen (y, g, p) am Feldrand abgeschnitten
+            tf.alignment = TextAnchor.MiddleLeft;
+            tf.padding = new RectOffset(10, 10, 4, 6);
+            tf.clipping = TextClipping.Overflow;
             tf.normal.textColor = schwarz;
             tf.hover.textColor = schwarz;
             tf.focused.textColor = schwarz;
