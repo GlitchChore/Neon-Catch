@@ -651,10 +651,10 @@ namespace NeonCatch
                 textStil.alignment = TextAnchor.MiddleRight;
                 textStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
                 textStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
-                GUI.Label(new Rect(sw * 0.5f - sw * 0.24f, sh * 0.635f, sw * 0.13f, sh * 0.045f),
+                GUI.Label(new Rect(sw * 0.5f - sw * 0.30f, sh * 0.63f, sw * 0.18f, sh * 0.055f),
                           "Dein Name:", textStil);
-                string neuerName = GUI.TextField(new Rect(sw * 0.5f - sw * 0.10f, sh * 0.635f,
-                                                          sw * 0.22f, sh * 0.045f), nameEingabe ?? "");
+                string neuerName = GUI.TextField(new Rect(sw * 0.5f - sw * 0.10f, sh * 0.63f,
+                                                          sw * 0.24f, sh * 0.055f), nameEingabe ?? "");
                 if (neuerName != nameEingabe)
                 {
                     nameEingabe = neuerName;
