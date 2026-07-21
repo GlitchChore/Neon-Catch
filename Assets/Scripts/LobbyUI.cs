@@ -102,6 +102,7 @@ public class LobbyUI : MonoBehaviour
     GameObject verbindePanel;
     bool verbindetGerade;
     GameObject soloWahlPanel;
+    GameObject zurueckButtonGO;
     SoloSucherWahl soloSucherWahl;
     bool soloStartAusstehend;
     string zuletztGezeigterFehler = "";
@@ -217,6 +218,10 @@ public class LobbyUI : MonoBehaviour
 
         // Waehrend der Solo-Sofortstart laeuft, die Lobby gar nicht erst zeigen
         lobbyPanel.SetActive(verbunden && phase == SpielPhase.Lobby && !soloStartAusstehend);
+
+        // Zurueck-Button ueberall AUSSER auf der Startseite (Hauptmenue)
+        if (zurueckButtonGO != null)
+            zurueckButtonGO.SetActive(!hauptPanel.activeSelf);
         hudPanel.SetActive(verbunden && (phase == SpielPhase.Verstecken || phase == SpielPhase.Suchen));
         endePanel.SetActive(verbunden && phase == SpielPhase.Ende);
 
@@ -631,6 +636,7 @@ public class LobbyUI : MonoBehaviour
 
         // ---------- Immer sichtbarer Zurueck-Button oben links ----------
         var zurueck = Knopf(canvas.transform, "< Zurück (Z)", Vector2.zero, GlobalerZurueck);
+        zurueckButtonGO = zurueck.gameObject;
         var zr = zurueck.GetComponent<Image>().rectTransform;
         zr.anchorMin = zr.anchorMax = zr.pivot = new Vector2(0f, 1f);   // oben links
         zr.anchoredPosition = new Vector2(100f, -34f);
