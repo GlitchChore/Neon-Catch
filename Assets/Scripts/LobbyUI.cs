@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Photon.Pun;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
@@ -93,16 +94,16 @@ public class LobbyUI : MonoBehaviour
 
     Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
-    Text hilfeInhaltText, beitretenStatusText;
+    TMP_Text hilfeInhaltText, beitretenStatusText;
     GameObject sucherWartePanel, skipButton;
-    Text sucherWarteText;
+    TMP_Text sucherWarteText;
     RawImage hintergrundBild;
     Image weisserSchleier;
     GameObject verbindePanel;
     bool verbindetGerade;
     string zuletztGezeigterFehler = "";
-    InputField codeFeld;
-    Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText, platzierungenText;
+    TMP_InputField codeFeld;
+    TMP_Text lobbyCodeText, spielerListeText, hudText, sucherText, endeText, platzierungenText;
     GameObject startButton, nochmalButton, kopierButton, sucherWahlButton;
 
     static readonly Color Neon = new Color(0.1f, 0.95f, 0.95f);
@@ -241,7 +242,7 @@ public class LobbyUI : MonoBehaviour
         {
             lobbyCodeText.text = "BEITRITTS-CODE: " + PhotonRoomManager.RoomCode;
             kopierButton.SetActive(true);
-            var knopfText = kopierButton.GetComponentInChildren<Text>();
+            var knopfText = kopierButton.GetComponentInChildren<TMP_Text>();
             if (knopfText != null)
                 knopfText.text = kopiertAnzeige > 0f ? "Kopiert! An Freunde schicken" : "CODE KOPIEREN";
         }
@@ -275,7 +276,7 @@ public class LobbyUI : MonoBehaviour
                 name = s != null && s.spielerName != "" ? s.spielerName : "Zufällig";
                 if (s == null) GamePhaseManager.Instance.gewaehlterSucher = 0;   // Spieler weg -> zurueck auf Zufaellig
             }
-            var t = sucherWahlButton.GetComponentInChildren<Text>();
+            var t = sucherWahlButton.GetComponentInChildren<TMP_Text>();
             if (t != null) t.text = "Sucher: " + name + "  (ändern)";
         }
     }
@@ -475,7 +476,7 @@ public class LobbyUI : MonoBehaviour
         });
         var beitretenHilfe = Knopf(beitretenPanel.transform, "Hilfe: Was muss ich machen?",
             new Vector2(0, -110), () => ZeigeHilfe(NetzwerkHilfe.BeitretenAnleitung));
-        beitretenHilfe.GetComponentInChildren<Text>().color = new Color(1f, 0.7f, 0.2f);
+        beitretenHilfe.GetComponentInChildren<TMP_Text>().color = new Color(1f, 0.7f, 0.2f);
         Knopf(beitretenPanel.transform, "Zurück", new Vector2(0, -165), () =>
         {
             beitretenPanel.SetActive(false);
@@ -498,7 +499,7 @@ public class LobbyUI : MonoBehaviour
         }).gameObject;
 
         spielerListeText = Text(lobbyPanel.transform, "", new Vector2(0, 90), 19, Color.white);
-        spielerListeText.alignment = TextAnchor.UpperCenter;
+        spielerListeText.alignment = TextAlignmentOptions.Top;
         spielerListeText.rectTransform.sizeDelta = new Vector2(460, 110);
 
         // Sucher-Auswahl (nur der Host): Zufaellig oder ein bestimmter Spieler.
@@ -538,7 +539,7 @@ public class LobbyUI : MonoBehaviour
         endePanel = Panel(canvas.transform, "EndePanel", 460, 460);
         endeText = Text(endePanel.transform, "SPIEL VORBEI!", new Vector2(0, 195), 32, Neon);
         platzierungenText = Text(endePanel.transform, "", new Vector2(0, 60), 20, Color.white);
-        platzierungenText.alignment = TextAnchor.UpperCenter;
+        platzierungenText.alignment = TextAlignmentOptions.Top;
         platzierungenText.rectTransform.sizeDelta = new Vector2(400, 220);
         nochmalButton = Knopf(endePanel.transform, "Zurück zur Lobby", new Vector2(0, -160), () =>
         {
@@ -552,7 +553,7 @@ public class LobbyUI : MonoBehaviour
         hilfePanel = Panel(canvas.transform, "HilfePanel", 560, 420);
         hilfePanel.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.88f);
         hilfeInhaltText = Text(hilfePanel.transform, "", new Vector2(0, 10), 17, new Color(0.1f, 0.1f, 0.12f));
-        hilfeInhaltText.alignment = TextAnchor.UpperCenter;
+        hilfeInhaltText.alignment = TextAlignmentOptions.Top;
         hilfeInhaltText.rectTransform.sizeDelta = new Vector2(520, 320);
         Knopf(hilfePanel.transform, "Zurück", new Vector2(0, -180), () => hilfePanel.SetActive(false));
         hilfePanel.SetActive(false);
@@ -634,26 +635,23 @@ public class LobbyUI : MonoBehaviour
         return panel;
     }
 
-    Text Text(Transform eltern, string inhalt, Vector2 position, int groesse, Color farbe)
+    // TextMeshPro-Schrift: gestochen scharf (SDF) und verschwindet NICHT
+    // mehr beim Klicken/Drueberfahren (der alte dynamische Font baute bei
+    // jedem Groessenwechsel seinen Zeichen-Atlas neu und liess Texte kurz
+    // verschwinden). Duenner dunkler Umriss fuer Lesbarkeit.
+    TMP_Text Text(Transform eltern, string inhalt, Vector2 position, int groesse, Color farbe)
     {
         var go = new GameObject("Text");
         go.transform.SetParent(eltern, false);
-        var text = go.AddComponent<Text>();
-        text.font = schrift;
+        var text = go.AddComponent<TextMeshProUGUI>();
         text.text = inhalt;
         text.fontSize = groesse;
         text.color = farbe;
-        text.alignment = TextAnchor.MiddleCenter;
-        text.horizontalOverflow = HorizontalWrapMode.Overflow;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.alignment = TextAlignmentOptions.Center;
         text.rectTransform.anchoredPosition = position;
         text.rectTransform.sizeDelta = new Vector2(400, 40);
-
-        // Dunkler Umriss (duenn = scharf): Schrift bleibt auf JEDEM Hintergrund
-        // lesbar (auch wenn ein Button beim Drueberfahren hell wird)
-        var outline = go.AddComponent<Outline>();
-        outline.effectColor = new Color(0f, 0f, 0f, 0.9f);
-        outline.effectDistance = new Vector2(1f, -1f);
+        text.outlineWidth = 0.16f;
+        text.outlineColor = new Color32(0, 0, 0, 220);
         return text;
     }
 
@@ -675,19 +673,16 @@ public class LobbyUI : MonoBehaviour
         button.onClick.AddListener(aktion);
 
         // Text passt sich automatisch der Button-Groesse an (schrumpft bei
-        // langen Beschriftungen, statt ueber den Rand zu laufen oder
-        // abgeschnitten zu werden)
+        // langen Beschriftungen, statt ueber den Rand zu laufen)
         var text = Text(go.transform, beschriftung, Vector2.zero, 22, Color.white);
         text.rectTransform.sizeDelta = bild.rectTransform.sizeDelta - new Vector2(16, 6);
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Overflow;
-        text.resizeTextForBestFit = true;
-        text.resizeTextMaxSize = 20;
-        text.resizeTextMinSize = 9;
+        text.enableAutoSizing = true;
+        text.fontSizeMax = 20;
+        text.fontSizeMin = 9;
         return button;
     }
 
-    InputField Eingabefeld(Transform eltern, Vector2 position, string platzhalter)
+    TMP_InputField Eingabefeld(Transform eltern, Vector2 position, string platzhalter)
     {
         var go = new GameObject("Feld");
         go.transform.SetParent(eltern, false);
@@ -696,18 +691,46 @@ public class LobbyUI : MonoBehaviour
         bild.rectTransform.anchoredPosition = position;
         bild.rectTransform.sizeDelta = new Vector2(300, 42);
 
-        var feld = go.AddComponent<InputField>();
+        var feld = go.AddComponent<TMP_InputField>();
 
-        var platzhalterText = Text(go.transform, platzhalter, Vector2.zero, 18, new Color(0.45f, 0.45f, 0.45f));
-        platzhalterText.fontStyle = FontStyle.Italic;
-        platzhalterText.rectTransform.sizeDelta = new Vector2(280, 38);
+        // Sichtbereich mit Maske (Pflicht-Struktur fuer TMP_InputField)
+        var bereichGO = new GameObject("TextArea");
+        bereichGO.transform.SetParent(go.transform, false);
+        var bereich = bereichGO.AddComponent<RectTransform>();
+        bereichGO.AddComponent<RectMask2D>();
+        bereich.anchorMin = Vector2.zero;
+        bereich.anchorMax = Vector2.one;
+        bereich.offsetMin = new Vector2(10, 4);
+        bereich.offsetMax = new Vector2(-10, -4);
 
-        var eingabeText = Text(go.transform, "", Vector2.zero, 18, Color.black);
-        eingabeText.rectTransform.sizeDelta = new Vector2(280, 38);
+        var platzhalterText = new GameObject("Platzhalter").AddComponent<TextMeshProUGUI>();
+        platzhalterText.transform.SetParent(bereich, false);
+        platzhalterText.text = platzhalter;
+        platzhalterText.fontSize = 18;
+        platzhalterText.fontStyle = FontStyles.Italic;
+        platzhalterText.color = new Color(0.45f, 0.45f, 0.45f);
+        platzhalterText.alignment = TextAlignmentOptions.Left;
+        Strecke(platzhalterText.rectTransform);
+
+        var eingabeText = new GameObject("Text").AddComponent<TextMeshProUGUI>();
+        eingabeText.transform.SetParent(bereich, false);
+        eingabeText.fontSize = 18;
+        eingabeText.color = Color.black;
+        eingabeText.alignment = TextAlignmentOptions.Left;
+        Strecke(eingabeText.rectTransform);
 
         feld.targetGraphic = bild;
+        feld.textViewport = bereich;
         feld.textComponent = eingabeText;
         feld.placeholder = platzhalterText;
         return feld;
+    }
+
+    static void Strecke(RectTransform rt)
+    {
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
     }
 }
