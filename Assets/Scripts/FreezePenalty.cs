@@ -29,6 +29,7 @@ public class FreezePenalty : MonoBehaviourPun
     CharacterController controller;
     SelfPaintSystem paint;
     Camera eigeneKamera;
+    NeonCatch.BotAnimation botAnim;
     static GameObject soloSpieler;
     float yaw, pitch, vertikal;
     bool imWasser;
@@ -162,6 +163,10 @@ public class FreezePenalty : MonoBehaviourPun
         }
         vertikal = controller.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
         controller.Move((richtung * (tempo * 0.8f) + Vector3.up * vertikal) * Time.deltaTime);
+
+        // Lauf-Animation der Synty-Figur mitfuehren
+        if (botAnim == null) botAnim = GetComponentInChildren<NeonCatch.BotAnimation>();
+        botAnim?.MeldeBewegung(true, true, controller.isGrounded, 0f);
     }
 
     // Tueren oeffnen/schliessen per Linksklick (E ist zum Malen belegt)

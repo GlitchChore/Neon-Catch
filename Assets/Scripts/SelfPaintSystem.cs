@@ -65,8 +65,39 @@ public class SelfPaintSystem : MonoBehaviourPun
             istBot = true;
             spielerName = (string)daten[0];
             farbeGesetzt = true;
+            BaueBotFigur();   // Synty-Figur wie im Abschiess-Modus statt Kapsel
             SetzeSichtbareFarbe(new Color((float)daten[1], (float)daten[2], (float)daten[3]));
         }
+    }
+
+    // Bots tragen dieselben Figuren wie im Abschiess-Modus (KI/Bot_1..4)
+    // statt der einfachen Kapsel - inklusive Idle-Animationen.
+    void BaueBotFigur()
+    {
+        foreach (var r in GetComponentsInChildren<Renderer>())
+            r.enabled = false;   // Kapsel ausblenden
+
+        // Bot-Nummer aus dem Namen ("Bot 3" -> 3), sonst 1
+        int nr = 1;
+        for (int i = spielerName.Length - 1; i >= 0; i--)
+            if (char.IsDigit(spielerName[i])) { nr = spielerName[i] - '0'; break; }
+        nr = Mathf.Clamp((nr - 1) % 4 + 1, 1, 4);
+
+        GameObject prefab = Resources.Load<GameObject>("KI/Bot_" + nr);
+        if (prefab == null) return;
+
+        var figur = Instantiate(prefab, transform);
+        figur.transform.localPosition = Vector3.zero;
+        figur.transform.localRotation = Quaternion.identity;
+        float hoehe = 0f;
+        foreach (Renderer r in figur.GetComponentsInChildren<Renderer>())
+            hoehe = Mathf.Max(hoehe, r.bounds.size.y);
+        if (hoehe > 0.01f)
+            figur.transform.localScale *= 0.55f / hoehe;   // passend zur kleinen Spielwelt
+        figur.AddComponent<NeonCatch.BotAnimation>();
+
+        // Anmal-Farbe soll auf die Synty-Figur wirken, nicht auf die Kapsel
+        eigeneRenderer = figur.GetComponentsInChildren<Renderer>();
     }
 
     void Start()
