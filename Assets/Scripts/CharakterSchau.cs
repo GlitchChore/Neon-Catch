@@ -199,9 +199,21 @@ namespace NeonCatch
 
         void Update()
         {
-            // Drehteller-Effekt: die Figur dreht sich langsam um sich selbst
-            if (aktiv && aktuelleFigur != null)
-                aktuelleFigur.transform.Rotate(0f, 26f * Time.deltaTime, 0f, Space.World);
+            // Kein Selbstdrehen mehr: der Spieler dreht die Figur selbst,
+            // indem er mit gedrueckter Maus (oder dem Finger) zieht.
+            if (!aktiv || aktuelleFigur == null) return;
+
+            float dx = 0f;
+            var maus = UnityEngine.InputSystem.Mouse.current;
+            if (maus != null && maus.leftButton.isPressed)
+                dx = maus.delta.ReadValue().x;
+
+            var touch = UnityEngine.InputSystem.Touchscreen.current;
+            if (touch != null && touch.primaryTouch.press.isPressed)
+                dx = touch.primaryTouch.delta.ReadValue().x;
+
+            if (Mathf.Abs(dx) > 0.01f)
+                aktuelleFigur.transform.Rotate(0f, -dx * 0.4f, 0f, Space.World);
         }
     }
 }

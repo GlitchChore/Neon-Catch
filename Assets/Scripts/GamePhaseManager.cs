@@ -87,11 +87,39 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
         return viewId != 0 && sucherViewId != 0 && viewId == sucherViewId;
     }
 
+    bool trophaeenVergeben;
+
     public override void OnRoomPropertiesUpdate(Hashtable geaendert)
     {
         SpielPhase alt = phase;
         LiesEigenschaften(geaendert);
-        if (phase != alt) PhaseGewechselt?.Invoke(phase);
+        if (phase != alt)
+        {
+            PhaseGewechselt?.Invoke(phase);
+            if (phase == SpielPhase.Verstecken) trophaeenVergeben = false;   // neue Runde
+            if (phase == SpielPhase.Ende && !trophaeenVergeben)
+            {
+                trophaeenVergeben = true;
+                VergebeTrophaeen();
+            }
+        }
+    }
+
+    // Jeder Client vergibt SEINEM lokalen Spieler Trophaeen (Sieg +30, sonst +10).
+    // Sucher gewinnt, wenn er alle fand; Versteckter gewinnt, wenn er entkam.
+    void VergebeTrophaeen()
+    {
+        var alle = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None);
+        var lokal = alle.FirstOrDefault(s => s.photonView.IsMine && !s.istBot);
+        if (lokal == null) return;
+
+        int belohnung;
+        if (lokal.photonView.ViewID == sucherViewId)
+            belohnung = alle.Where(s => s.photonView.ViewID != sucherViewId).All(s => s.gefunden) ? 30 : 10;
+        else
+            belohnung = lokal.gefunden ? 10 : 30;
+
+        ProgressionManager.EnsureInstance().AddTrophies(belohnung);
     }
 
     void LiesEigenschaften(Hashtable p)

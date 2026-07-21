@@ -255,11 +255,19 @@ namespace NeonCatch
             int platz = bots.Count + 1;
             laeuft = false;
 
+            // Trophaeen fuer die Runde: Sieg = +30, sonst (echter Tod) = +10.
+            // Bei blossem Abbrechen/Reset (weder gewonnen noch tot) gibt es nichts.
             if (gewonnen)
-                endText = "GEWONNEN! Du bist der Letzte!";
+            {
+                ProgressionManager.EnsureInstance().AddTrophies(30);
+                endText = "GEWONNEN! Du bist der Letzte!   +30 Trophäen";
+            }
             else if (spielerLeben <= 0)
+            {
+                ProgressionManager.EnsureInstance().AddTrophies(10);
                 endText = "GESTORBEN – Platz " + platz + " von " + (botsGesamt + 1) +
-                           ". Drücke START für eine neue Runde.";
+                           ".   +10 Trophäen. Drücke START für eine neue Runde.";
+            }
             else
                 endText = "Drücke START für eine neue Runde.";
 
@@ -564,9 +572,9 @@ namespace NeonCatch
             GUI.Label(new Rect(0f, sh * 0.05f, sw, sh * 0.06f), "CHARAKTER WÄHLEN", kartenTitelStil);
 
             // 3D-Vorschau (Hochformat, Seitenverhaeltnis der RenderTexture)
-            float vorschauH = sh * 0.54f;
+            float vorschauH = sh * 0.46f;
             float vorschauB = vorschauH * (512f / 760f);
-            var vorschauRect = new Rect(sw * 0.5f - vorschauB * 0.5f, sh * 0.13f, vorschauB, vorschauH);
+            var vorschauRect = new Rect(sw * 0.5f - vorschauB * 0.5f, sh * 0.11f, vorschauB, vorschauH);
             if (schau.Textur != null)
                 GUI.DrawTexture(vorschauRect, schau.Textur, ScaleMode.ScaleToFit, false);
 
@@ -580,25 +588,26 @@ namespace NeonCatch
                 schau.Zeige(schau.Index + 1);
 
             // Name (gross) unter der Vorschau
-            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.05f);
-            GUI.Label(new Rect(0f, sh * 0.68f, sw, sh * 0.06f), schau.AktName, kartenTitelStil);
+            kartenTitelStil.fontSize = Mathf.RoundToInt(sh * 0.045f);
+            GUI.Label(new Rect(0f, sh * 0.585f, sw, sh * 0.055f), schau.AktName, kartenTitelStil);
 
             // Punkte-Zaehler "1 / 3"
             if (steuerungStil == null)
                 steuerungStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft };
             steuerungStil.alignment = TextAnchor.UpperCenter;
-            steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+            steuerungStil.wordWrap = true;
+            steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.021f);
             steuerungStil.normal.textColor = new Color(0.15f, 0.15f, 0.18f);
-            GUI.Label(new Rect(0f, sh * 0.735f, sw, sh * 0.03f),
+            GUI.Label(new Rect(0f, sh * 0.64f, sw, sh * 0.03f),
                       (schau.Index + 1) + " / " + schau.Anzahl, steuerungStil);
 
-            // Kleine Geschichte auf der Karte
-            var kartenRect = new Rect(sw * 0.5f - sw * 0.22f, sh * 0.77f, sw * 0.44f, sh * 0.11f);
+            // Kleine Geschichte auf der Karte - groesser, damit der ganze Text hineinpasst
+            var kartenRect = new Rect(sw * 0.5f - sw * 0.27f, sh * 0.68f, sw * 0.54f, sh * 0.185f);
             GUI.DrawTexture(kartenRect, kartenTex);
-            steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.024f);
+            steuerungStil.fontSize = Mathf.RoundToInt(sh * 0.021f);
             steuerungStil.normal.textColor = new Color(0.1f, 0.1f, 0.12f);
-            GUI.Label(new Rect(kartenRect.x + sw * 0.01f, kartenRect.y + sh * 0.006f,
-                               kartenRect.width - sw * 0.02f, kartenRect.height - sh * 0.012f),
+            GUI.Label(new Rect(kartenRect.x + sw * 0.015f, kartenRect.y + sh * 0.012f,
+                               kartenRect.width - sw * 0.03f, kartenRect.height - sh * 0.024f),
                       schau.AktGeschichte, steuerungStil);
 
             // Auswahl-Knopf: merkt sich den Lieblings-Charakter
@@ -616,6 +625,41 @@ namespace NeonCatch
                 zeigeCharaktere = false;
                 schau.SetzeAktiv(false);
             }
+        }
+
+        // Trophaeenpfad unten links: die 3 Hauptwerte mit Icons (Stern =
+        // Trophaeen, Diamant = Juwelen, Muenze = MapCoins). Nur auf der
+        // Startseite - im laufenden Kampf wird das hier nicht gezeichnet.
+        void ZeichneWaehrungen(float sw, float sh)
+        {
+            var pm = ProgressionManager.EnsureInstance();
+
+            if (textStil == null)
+                textStil = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+            textStil.alignment = TextAnchor.MiddleLeft;
+            textStil.wordWrap = false;
+            textStil.fontSize = Mathf.RoundToInt(sh * 0.032f);
+            textStil.normal.textColor = new Color(0.08f, 0.08f, 0.1f);
+
+            float ic = sh * 0.05f;             // Icon-Groesse
+            float x = sw * 0.02f;
+            float y = sh * 0.72f;
+            float zeile = sh * 0.062f;
+
+            ZeichneWert(WaehrungsIcons.Trophaee, pm.Get(ProgressionManager.TROPHIES).ToString(), x, y,             ic);
+            ZeichneWert(WaehrungsIcons.Juwel,    pm.Get(ProgressionManager.JEWELS).ToString(),   x, y + zeile,     ic);
+            ZeichneWert(WaehrungsIcons.Muenze,   pm.Get(ProgressionManager.MAPCOINS).ToString(), x, y + 2 * zeile, ic);
+
+            // Kleiner Test-Knopf (kann spaeter geloescht werden)
+            knopfStil.fontSize = Mathf.RoundToInt(sh * 0.02f);
+            if (GUI.Button(new Rect(x, y + 3 * zeile, sw * 0.13f, sh * 0.045f), "+100 Trophäen (Test)", knopfStil))
+                pm.AddTrophies(100);
+        }
+
+        void ZeichneWert(Texture2D icon, string wert, float x, float y, float groesse)
+        {
+            if (icon != null) GUI.DrawTexture(new Rect(x, y, groesse, groesse), icon);
+            GUI.Label(new Rect(x + groesse + 8f, y, 240f, groesse), wert, textStil);
         }
 
         void OnGUI()
@@ -771,15 +815,10 @@ namespace NeonCatch
                         "RUNDE BEITRETEN (Code eingeben)", knopfStil))
                     zeigeOnlineBeitritt = true;
 
-                // Untere Reihe: drei gleich breite Knoepfe (Charakter,
-                // Steuerung, Hilfe). Kleinere Schrift, damit alles hineinpasst.
-                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.02f);
-                float uReiheY = sh * 0.91f, uReiheH = sh * 0.05f;
-                float uReiheX = sw * 0.5f - sw * 0.13f;
-                float uBreite = sw * 0.0827f;      // (0.26 - 2*0.005) / 3
-                float uSchritt = uBreite + sw * 0.005f;
-
-                if (GUI.Button(new Rect(uReiheX, uReiheY, uBreite, uReiheH), "CHARAKTER", knopfStil))
+                // CHARAKTER-Knopf (mittig)
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.022f);
+                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.905f, sw * 0.26f, sh * 0.05f),
+                        "CHARAKTER", knopfStil))
                 {
                     var schau = CharakterSchau.Hole();
                     schau.SetzeAktiv(true);
@@ -787,15 +826,15 @@ namespace NeonCatch
                     zeigeCharaktere = true;
                 }
 
-                if (GUI.Button(new Rect(uReiheX + uSchritt, uReiheY, uBreite, uReiheH), "STEUERUNG", knopfStil))
+                // STEUERUNG / ANLEITUNG unten am Rand (Hilfe-Knopf entfaellt)
+                knopfStil.fontSize = Mathf.RoundToInt(sh * 0.02f);
+                if (GUI.Button(new Rect(sw * 0.5f - sw * 0.13f, sh * 0.958f, sw * 0.26f, sh * 0.038f),
+                        "STEUERUNG / ANLEITUNG", knopfStil))
                     zeigeSteuerung = true;
 
-                if (GUI.Button(new Rect(uReiheX + 2f * uSchritt, uReiheY, uBreite, uReiheH), "HILFE", knopfStil))
-                {
-                    hilfeInhalt = NetzwerkHilfe.HostAnleitung;
-                    hilfeZurueckZuBeitritt = false;
-                    zeigeHilfe = true;
-                }
+                // Trophaeenpfad unten links (nur hier auf der Startseite sichtbar,
+                // nicht im laufenden Kampf)
+                ZeichneWaehrungen(sw, sh);
 
                 // End-Nachricht: ganz oben am Rand, ohne Kästchen
                 if (endText != "")
