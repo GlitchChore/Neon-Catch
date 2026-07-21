@@ -50,10 +50,11 @@ namespace NeonCatch
         static AnimationClip[] sterbeClips;
         static bool geladen;
 
-        // "Falling Back Death" fliegt beim Treffer nach hinten weg – auf
-        // Wunsch ausgeschlossen, es bleiben nur die "freundlicheren"
-        // Sterbe-Animationen (Standing Death Left/Right, Zombie Dying)
-        static readonly string[] ausgeschlosseneSterbeClips = { "Falling Back Death" };
+        // "Falling Back Death" fliegt beim Treffer nach hinten weg und
+        // "Zombie Dying" (das Wackeln) ist jetzt die TREFFER-Reaktion statt
+        // eine Sterbe-Animation - es bleiben nur die freundlichen
+        // Schulterzucken-/Haende-vors-Gesicht-Tode (Standing Death Left/Right).
+        static readonly string[] ausgeschlosseneSterbeClips = { "Falling Back Death", "Zombie Dying" };
 
         // "Zombie Dying" ist die Animation, bei der der Körper wackelt –
         // dafür soll beim Aufrufer ein Sterne-Effekt um den Kopf erscheinen

@@ -528,6 +528,10 @@ namespace NeonCatch
             {
                 PhotonView pv = PhotonView.Find(zielView);
                 if (pv != null) anheften = pv.transform;
+
+                // Treffer gelandet: kurze FREUDE beim Schuetzen (fuer Mitspieler
+                // sichtbar - die eigene Figur ist in der Ego-Ansicht unsichtbar)
+                visualAnim?.SpieleEinmalig(BotAnimation.CLIP_SIEG, 0.7f);
             }
             Farbschuss.Abfeuern(start, ende, normal, anheften);
         }
@@ -556,8 +560,16 @@ namespace NeonCatch
         [PunRPC]
         void RpcSetzeLeben(int neu)
         {
+            bool getroffenWorden = neu < leben && neu > 0;
             leben = neu;
             if (herzen != null) herzen.SetzeLeben(Mathf.Max(0, neu));
+
+            // 1x abgeschossen (nicht toedlich): WACKELN + Sterne kreisen 3 s
+            if (getroffenWorden)
+            {
+                visualAnim?.SpieleEinmalig(BotAnimation.CLIP_TREFFER_DIZZY, 1.2f);
+                TodesSterneEffekt.Erzeuge(transform, Vector3.up * 0.7f);
+            }
 
             // Letztes Leben: Blitze kreisen um die Figur - fuer ALLE sichtbar
             if (neu == 1 && !tot && blitzEffekt == null)
@@ -607,6 +619,11 @@ namespace NeonCatch
         public void RpcRundenEndeGlobal(string sieger)
         {
             endText = "RUNDE VORBEI - Sieger: " + sieger;
+
+            // Platz 1: SIEGERTANZ (dieser RPC laeuft auf der Figur des Gewinners)
+            if (!tot)
+                visualAnim?.SpieleEinmalig(BotAnimation.CLIP_TANZ, 5f);
+
             if (photonView.IsMine && !istBot)
             {
                 Cursor.lockState = CursorLockMode.None;

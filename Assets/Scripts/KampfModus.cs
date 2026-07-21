@@ -1285,6 +1285,7 @@ namespace NeonCatch
             Vector3 ende = start + richtung * sichtweite;
             Vector3 normal = -richtung;
             Transform getroffen = null;
+            bool freudeGesetzt = false;   // Freude/Tanz soll nicht vom Kniefall ueberschrieben werden
 
             // Naechsten Treffer suchen, der nicht der eigene Koerper ist
             RaycastHit[] alleTreffer = Physics.RaycastAll(start, richtung, sichtweite,
@@ -1309,11 +1310,18 @@ namespace NeonCatch
                 if (hit.collider.CompareTag("Player"))
                 {
                     getroffen = KampfModus.Instanz.Spieler;
-                    // Tödlicher Treffer gegen den Spieler beendet die Runde sofort –
-                    // dieser Bot ist damit der letzte Überlebende, nur DANN die
-                    // Sieges-Animation (nicht bei jedem einzelnen Kill mittendrin)
                     if (KampfModus.Instanz.SpielerGetroffen())
-                        anim?.SpieleEinmalig(BotAnimation.CLIP_SIEG, 0.8f);
+                    {
+                        // Runde gewonnen (letzter Ueberlebender): SIEGERTANZ
+                        anim?.SpieleEinmalig(BotAnimation.CLIP_TANZ, 4f);
+                        freudeGesetzt = true;
+                    }
+                    else
+                    {
+                        // Treffer gelandet: kurze FREUDE
+                        anim?.SpieleEinmalig(BotAnimation.CLIP_SIEG, 0.7f);
+                        freudeGesetzt = true;
+                    }
                 }
                 else
                 {
@@ -1321,7 +1329,10 @@ namespace NeonCatch
                     if (anderer != null && anderer != this)
                     {
                         getroffen = anderer.transform;
-                        anderer.Treffer();   // ein Kill mittendrin – keine Sieges-Animation
+                        anderer.Treffer();
+                        // Treffer gelandet: kurze FREUDE
+                        anim?.SpieleEinmalig(BotAnimation.CLIP_SIEG, 0.7f);
+                        freudeGesetzt = true;
                     }
                     else
                     {
@@ -1331,7 +1342,8 @@ namespace NeonCatch
                 }
             }
 
-            anim?.SpieleEinmalig(BotAnimation.CLIP_KNIEFALL, 0.5f);
+            if (!freudeGesetzt)
+                anim?.SpieleEinmalig(BotAnimation.CLIP_KNIEFALL, 0.5f);
             Farbschuss.Abfeuern(start + richtung * 0.2f, ende, normal, getroffen);
         }
 
@@ -1355,8 +1367,9 @@ namespace NeonCatch
                 return true;
             }
 
-            // Kurze Reaktion auf einen nicht-tödlichen Treffer
-            anim?.SpieleEinmalig(Random.value < 0.5f ? BotAnimation.CLIP_TREFFER_SAD : BotAnimation.CLIP_TREFFER_DIZZY, 1f);
+            // Nicht-toedlicher Treffer: WACKELN (Dizzy) + Sterne kreisen 3 s ueberm Kopf
+            anim?.SpieleEinmalig(BotAnimation.CLIP_TREFFER_DIZZY, 1.2f);
+            TodesSterneEffekt.Erzeuge(transform, Vector3.up * 0.85f);
             return false;
         }
 
@@ -1644,7 +1657,7 @@ namespace NeonCatch
     {
         const int anzahl = 8;
         const float radius = 0.12f;
-        const float lebensdauer = 2f;
+        const float lebensdauer = 3f;   // Sterne kreisen 3 Sekunden
         const float kreiselTempo = 220f;
 
         float zeit;
