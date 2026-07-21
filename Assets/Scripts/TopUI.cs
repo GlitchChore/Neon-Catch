@@ -23,14 +23,11 @@ namespace NeonCatch
         public Text trophyText, jewelText, coinText;
 
         Font schrift;
-        Transform popupWurzel;
         int letzteTrophies, letzteJewels;
         Coroutine blinkT, blinkJ;
 
         static readonly Color Gold     = new Color(1f, 0.85f, 0.1f);
         static readonly Color HellGrau = new Color(0.85f, 0.85f, 0.88f);
-        static readonly Color Neon     = new Color(0.1f, 0.95f, 0.95f);
-        static readonly Vector2 M      = new Vector2(0.5f, 0.5f);
 
         // -------------------- Auto-Aufbau --------------------
 
@@ -82,12 +79,6 @@ namespace NeonCatch
             jewelText  = MacheWert(canvas, "jewelText",  "💠 0/100", 0.50f);
             coinText   = MacheWert(canvas, "coinText",   "🪙 0",     0.78f);
 
-            // Wurzel fuer Item-Popups (Bildschirmmitte)
-            var wurzelGO = new GameObject("PopupWurzel", typeof(RectTransform));
-            wurzelGO.transform.SetParent(canvas, false);
-            Fuelle(wurzelGO.GetComponent<RectTransform>());
-            popupWurzel = wurzelGO.transform;
-
             // ---- Test-Knoepfe unten rechts (koennen geloescht werden) ----
             var t1 = MacheButton(canvas, "Test50Trophies", "+50 🏆", HellGrau, 34);
             Setze(t1.GetComponent<RectTransform>(), new Vector2(1, 0), new Vector2(1, 0), new Vector2(1, 0),
@@ -105,13 +96,11 @@ namespace NeonCatch
         void OnEnable()
         {
             ProgressionManager.OnCurrencyChanged += BeiWaehrung;
-            BoxOpener.OnBoxGeoeffnet += BeiBoxGeoeffnet;
         }
 
         void OnDisable()
         {
             ProgressionManager.OnCurrencyChanged -= BeiWaehrung;
-            BoxOpener.OnBoxGeoeffnet -= BeiBoxGeoeffnet;
         }
 
         void Start()
@@ -171,45 +160,6 @@ namespace NeonCatch
                 yield return null;
             }
             ziel.color = Color.white;
-        }
-
-        // -------------------- Item-Popup (Box geoeffnet) --------------------
-
-        void BeiBoxGeoeffnet(string boxTyp, string seltenheit, Color farbe)
-        {
-            StartCoroutine(ZeigeItem(farbe, seltenheit));
-        }
-
-        // Item "fliegt raus": kurzer Pop + nach oben schweben + ausblenden,
-        // eingefaerbt in der Seltenheits-Farbe.
-        IEnumerator ZeigeItem(Color farbe, string text)
-        {
-            if (popupWurzel == null) yield break;
-
-            var go = new GameObject("ItemPopup", typeof(RectTransform), typeof(CanvasGroup));
-            go.transform.SetParent(popupWurzel, false);
-            var rt = go.GetComponent<RectTransform>();
-            var cg = go.GetComponent<CanvasGroup>();
-            Setze(rt, M, M, M, Vector2.zero, new Vector2(320, 320));
-
-            var glow = MacheBild(go.transform, "Item", farbe);
-            Fuelle(glow.rectTransform);
-
-            var label = MacheText(go.transform, "Label", text, 44, TextAnchor.MiddleCenter, Color.white);
-            Setze(label.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 1),
-                  new Vector2(0, -18), new Vector2(520, 80));
-
-            float t = 0f, dauer = 1.4f;
-            while (t < dauer)
-            {
-                t += Time.unscaledDeltaTime;
-                float p = Mathf.Clamp01(t / dauer);
-                rt.localScale = Vector3.one * Mathf.SmoothStep(0.3f, 1.1f, Mathf.Min(1f, p * 3f));
-                rt.anchoredPosition = new Vector2(0f, Mathf.Lerp(0f, 170f, p));
-                cg.alpha = p < 0.7f ? 1f : Mathf.Lerp(1f, 0f, (p - 0.7f) / 0.3f);
-                yield return null;
-            }
-            Destroy(go);
         }
 
         // -------------------- Kleine UI-Bausteine --------------------
