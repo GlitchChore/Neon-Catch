@@ -36,6 +36,12 @@ public static class BuildEinstellungen
                 geaendert = true;
             }
 
+            // KEINE schwarzen Streifen: die Render-Aufloesung folgt immer der
+            // Fenstergroesse - das Bild fuellt das Fenster komplett aus
+            // (bei einem 16:9-Fenster bleibt das Bild automatisch 16:9)
+            if (!PlayerSettings.resetResolutionOnWindowResize)
+            { PlayerSettings.resetResolutionOnWindowResize = true; geaendert = true; }
+
             if (geaendert)
             {
                 AssetDatabase.SaveAssets();
