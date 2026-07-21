@@ -54,7 +54,7 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
     public int restSekunden;
     public int sucherViewId;
 
-    /// <summary>Host-Wahl: gewuenschter Sucher (ViewID) oder 0 = zufaellig.</summary>
+    /// <summary>Host-Wahl: gewuenschter Sucher (ViewID), 0 = zufaellig, -1 = Bot 1.</summary>
     public int gewaehlterSucher;
 
     const string K_PHASE = "phase";
@@ -239,13 +239,15 @@ public class GamePhaseManager : MonoBehaviourPunCallbacks
 
     void WaehleSucher()
     {
-        var menschen = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None)
-                       .Where(s => !s.istBot).ToArray();
+        var alle = FindObjectsByType<SelfPaintSystem>(FindObjectsSortMode.None);
+        var menschen = alle.Where(s => !s.istBot).ToArray();
+        var bots = alle.Where(s => s.istBot).OrderBy(s => s.spielerName).ToList();
 
         int neu = 0;
-        // Bestimmter Sucher gewaehlt und noch da?
-        if (gewaehlterSucher != 0 && menschen.Any(s => s.photonView.ViewID == gewaehlterSucher))
-            neu = gewaehlterSucher;
+        if (gewaehlterSucher == -1 && bots.Count > 0)
+            neu = bots[0].photonView.ViewID;   // Bot 1 sucht (Bots wurden gerade gespawnt)
+        else if (gewaehlterSucher > 0 && menschen.Any(s => s.photonView.ViewID == gewaehlterSucher))
+            neu = gewaehlterSucher;            // bestimmter Spieler
         else if (menschen.Length > 0)
             neu = menschen[Random.Range(0, menschen.Length)].photonView.ViewID;
 

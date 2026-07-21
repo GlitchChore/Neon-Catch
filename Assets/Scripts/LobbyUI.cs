@@ -92,7 +92,6 @@ public class LobbyUI : MonoBehaviour
         new GameObject("FarbmimikUI").AddComponent<LobbyUI>();
     }
 
-    Font schrift;
     GameObject hauptPanel, beitretenPanel, lobbyPanel, hudPanel, endePanel, hilfePanel;
     TMP_Text hilfeInhaltText, beitretenStatusText;
     GameObject sucherWartePanel, skipButton;
@@ -116,8 +115,6 @@ public class LobbyUI : MonoBehaviour
 
     void Start()
     {
-        schrift = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-
         // FARBMIMIK braucht einen GamePhaseManager - falls keiner in der Szene
         // liegt, hier automatisch erzeugen (spart einen manuellen Einbau-Schritt)
         if (GamePhaseManager.Instance == null)
@@ -125,18 +122,24 @@ public class LobbyUI : MonoBehaviour
 
         BaueUI();
 
-        // Kam der Spieler aus dem anderen Modus (NEON-BLASTER-Menue)?
-        // AutoSolo = Solo gegen Bots (offline), AutoHost = Online-Runde.
+        // Kam der Spieler aus dem anderen Modus (NEON-BLASTER-Menue)? Die Wahl
+        // (Bots offline / Runde erstellen) ist dann SCHON getroffen - das
+        // FARBMIMIK-Hauptmenue wird uebersprungen:
+        // AutoSolo -> nur noch die Sucher-Frage (Zufaellig/Bot 1/Ich selbst),
+        // AutoHost -> direkt verbinden und in die Lobby (Code-Bildschirm).
         if (PlayerPrefs.GetInt("NeonCatch_AutoSolo", 0) == 1)
         {
             PlayerPrefs.SetInt("NeonCatch_AutoSolo", 0);
-            StarteSolo();
+            soloWahlPanel.SetActive(true);
         }
         else if (PlayerPrefs.GetInt("NeonCatch_AutoHost", 0) == 1)
         {
             PlayerPrefs.SetInt("NeonCatch_AutoHost", 0);
             if (Resources.Load<GameObject>("Spieler") != null)
+            {
+                verbindetGerade = true;   // Hauptmenue nicht kurz aufblitzen lassen
                 PhotonRoomManager.Instanz.ErstelleRaum("farbmimik", "Spieler", 7);
+            }
         }
     }
 
@@ -303,18 +306,29 @@ public class LobbyUI : MonoBehaviour
         {
             int gw = GamePhaseManager.Instance.gewaehlterSucher;
             string name = "Zufällig";
-            if (gw != 0)
+            if (gw == -1)
+            {
+                name = "Bot 1";
+            }
+            else if (gw != 0)
             {
                 var s = spieler.FirstOrDefault(x => x.photonView.ViewID == gw);
-                name = s != null && s.spielerName != "" ? s.spielerName : "Zufällig";
-                if (s == null) GamePhaseManager.Instance.gewaehlterSucher = 0;   // Spieler weg -> zurueck auf Zufaellig
+                if (s == null)
+                {
+                    GamePhaseManager.Instance.gewaehlterSucher = 0;   // Spieler weg -> Zufaellig
+                }
+                else
+                {
+                    name = s.spielerName != "" ? s.spielerName : "Spieler";
+                    if (s.photonView.IsMine) name += " (Ich)";
+                }
             }
             var t = sucherWahlButton.GetComponentInChildren<TMP_Text>();
             if (t != null) t.text = "Sucher: " + name + "  (ändern)";
         }
     }
 
-    // Host waehlt den Sucher durch: Zufaellig -> Spieler1 -> Spieler2 -> ... -> Zufaellig
+    // Host waehlt den Sucher durch: Zufaellig -> Bot 1 -> Spieler1 -> ... -> Zufaellig
     void SucherWahlWechseln()
     {
         if (!PhotonNetwork.IsMasterClient || GamePhaseManager.Instance == null) return;
@@ -324,7 +338,7 @@ public class LobbyUI : MonoBehaviour
                        .OrderBy(s => s.photonView.Owner != null ? s.photonView.Owner.ActorNumber : 0)
                        .ToList();
 
-        var ids = new List<int> { 0 };   // 0 = Zufaellig
+        var ids = new List<int> { 0, -1 };   // 0 = Zufaellig, -1 = Bot 1
         ids.AddRange(menschen.Select(m => m.photonView.ViewID));
 
         int akt = ids.IndexOf(GamePhaseManager.Instance.gewaehlterSucher);
