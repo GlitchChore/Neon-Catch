@@ -197,8 +197,10 @@ public class LobbyUI : MonoBehaviour
             verbindetGerade = false;
         verbindePanel.SetActive(verbindetGerade);
 
-        // Solo: sobald die eigene Figur da ist, Runde SOFORT starten (keine Lobby)
-        if (soloStartAusstehend && verbunden && PhotonRoomManager.IstSolo &&
+        // Solo kennt KEINE Lobby: sobald die eigene Figur da ist (Start) oder
+        // die Phase nach einer Runde auf Lobby zurueckfaellt ("Nochmal"),
+        // startet SOFORT eine neue Runde - der Code-Bildschirm erscheint nie.
+        if (verbunden && PhotonRoomManager.IstSolo &&
             GamePhaseManager.Instance != null && GamePhaseManager.Instance.phase == SpielPhase.Lobby &&
             LokalerSpieler() != null)
         {
