@@ -118,6 +118,7 @@ public class FreezePenalty : MonoBehaviourPun
         {
             Umschauen();
             Laufen();
+            TuerenOeffnen();
         }
         else if (imWasser)
         {
@@ -161,6 +162,19 @@ public class FreezePenalty : MonoBehaviourPun
         }
         vertikal = controller.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
         controller.Move((richtung * (tempo * 0.8f) + Vector3.up * vertikal) * Time.deltaTime);
+    }
+
+    // Tueren oeffnen/schliessen per Linksklick (E ist zum Malen belegt)
+    void TuerenOeffnen()
+    {
+        var maus = Mouse.current;
+        if (maus == null || !maus.leftButton.wasPressedThisFrame || eigeneKamera == null) return;
+        if (Physics.Raycast(eigeneKamera.transform.position, eigeneKamera.transform.forward,
+                out RaycastHit hit, 2.5f, ~(1 << 4), QueryTriggerInteraction.Ignore))
+        {
+            var tuer = hit.collider.GetComponentInParent<NeonCatch.Door>();
+            if (tuer != null) tuer.Toggle();
+        }
     }
 
     void Umschauen()

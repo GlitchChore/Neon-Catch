@@ -445,12 +445,27 @@ namespace NeonCatch
             if (eigeneKamera != null)
                 eigeneKamera.transform.localRotation = Quaternion.Euler(pitch, 0f, 0f);
 
-            // Laufen
+            // Laufen + Springen (Leertaste)
             float x = (kb.dKey.isPressed ? 1f : 0f) - (kb.aKey.isPressed ? 1f : 0f);
             float z = (kb.wKey.isPressed ? 1f : 0f) - (kb.sKey.isPressed ? 1f : 0f);
             Vector3 richtung = (transform.right * x + transform.forward * z).normalized * tempo;
-            vertikal = cc.isGrounded ? -1f : vertikal - 20f * Time.deltaTime;
+            if (cc.isGrounded)
+            {
+                vertikal = -1f;
+                if (kb.spaceKey.wasPressedThisFrame)
+                    vertikal = Mathf.Sqrt(2f * 0.6f * 20f);   // Sprunghoehe ~0.6 m
+            }
+            else vertikal -= 20f * Time.deltaTime;
             cc.Move((richtung + Vector3.up * vertikal) * Time.deltaTime);
+
+            // Tueren oeffnen/schliessen mit E (wie im Solo-Spiel per Klick)
+            if (kb.eKey.wasPressedThisFrame && eigeneKamera != null &&
+                Physics.Raycast(eigeneKamera.transform.position, eigeneKamera.transform.forward,
+                    out RaycastHit tuerHit, 2.5f, ~(1 << 4), QueryTriggerInteraction.Ignore))
+            {
+                var tuer = tuerHit.collider.GetComponentInParent<Door>();
+                if (tuer != null) tuer.Toggle();
+            }
 
             // Munition einzeln nachladen (Brawl-Stars-Art)
             if (munition < maxMunition)
