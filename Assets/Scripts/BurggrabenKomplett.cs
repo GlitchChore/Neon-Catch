@@ -1106,7 +1106,7 @@ namespace NeonCatch
         public float halbInnen  = 12f;     // halbe Kantenlänge Burginsel
         public float halbAussen = 18f;     // halbe Kantenlänge äußere Grabenkante
         public float geschwindigkeit = 2f;
-        public float eintauchSchwelle = 0.12f;  // so tief muss der Player einsinken (Figur ist 0.5 m hoch) – klein, damit Schwimmen rein automatisch (ohne Zutun) startet
+        public float eintauchSchwelle = 0.04f;  // so tief muss der Player einsinken – SEHR klein, damit Schwimmen sofort beim Reinlaufen startet (0.12 war zu traege: Wasser kam erst nach einem Sprung/tiefem Einsinken)
         public float auftauchSchwelle = 0.15f;
         public float mouseSensitivity = 0.15f;
 
@@ -1189,7 +1189,7 @@ namespace NeonCatch
         {
             if (schwimmt || cc == null) return;
             float wasserTiefe = wasserY - transform.position.y;
-            if (wasserTiefe > 0.05f && wasserTiefe < 6f && ImGrabenBereich())
+            if (wasserTiefe > 0.02f && wasserTiefe < 6f && ImGrabenBereich())
                 StarteSchwimmen();
         }
 
